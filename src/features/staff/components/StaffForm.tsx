@@ -174,7 +174,7 @@ export function StaffForm({ initialData, onSubmit, onCancel }: StaffFormProps) {
             </label>
             <select
               {...register("role")}
-              className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:bg-slate-900"
+              className="relative w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:bg-slate-900"
             >
               <option value="DOCTOR">{t("roles.doctor")}</option>
               <option value="ASSISTANT">{t("roles.assistant")}</option>

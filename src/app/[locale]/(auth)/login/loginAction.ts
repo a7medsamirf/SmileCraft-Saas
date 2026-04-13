@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { loginSchema } from "./schema";
+import { checkLoginRateLimit } from "@/lib/rate-limit";
 
 export type LoginState = {
   errors?: {
@@ -17,6 +18,18 @@ export async function loginAction(
   _prevState: LoginState,
   formData: FormData
 ): Promise<LoginState> {
+  // Check rate limit first (5 attempts per minute)
+  const rateLimit = await checkLoginRateLimit();
+  if (!rateLimit.success) {
+    return {
+      errors: {
+        form: [
+          "Too many login attempts. Please wait before trying again.",
+        ],
+      },
+    };
+  }
+
   const raw = {
     email: (formData.get("email") as string | null) ?? "",
     password: (formData.get("password") as string | null) ?? "",

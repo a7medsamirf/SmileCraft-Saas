@@ -23,6 +23,8 @@ import {
   Allergy,
   VisitType,
 } from "./types/index";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { auditCreate, auditUpdate, auditDelete } from "@/lib/audit";
 
 // ---------------------------------------------------------------------------
 // Auth helper — returns clinicId and branchId or null (never throws)
@@ -273,6 +275,12 @@ export async function createPatientActionDB(
   const { clinicId, branchId } = await getClinicAndBranchId();
   if (!clinicId) throw new Error("Unauthorized: no clinic found for this user.");
 
+  // Check rate limit (20 creates per minute)
+  const rateLimit = await checkRateLimit("createPatient", RATE_LIMITS.MUTATION_CREATE);
+  if (!rateLimit.success) {
+    throw new Error("Rate limit exceeded. Please try again later.");
+  }
+
   // Use full timestamp + 4-char random suffix → collision probability ≈ 0
   const fileNumber = `PT-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 
@@ -320,6 +328,13 @@ export async function createPatientActionDB(
   revalidatePath("/dashboard/patients");
   revalidatePath("/patients");
 
+  // Audit log
+  await auditCreate("patient", patient.id, {
+    fullName: patient.fullName,
+    phone: patient.phone,
+    gender: patient.gender,
+  });
+
   return mapRowToPatient(patient);
 }
 
@@ -332,6 +347,12 @@ export async function updatePatientActionDB(
 ): Promise<Patient> {
   const { clinicId, branchId } = await getClinicAndBranchId();
   if (!clinicId) throw new Error("Unauthorized");
+
+  // Check rate limit (50 updates per minute)
+  const rateLimit = await checkRateLimit("updatePatient", RATE_LIMITS.MUTATION_UPDATE);
+  if (!rateLimit.success) {
+    throw new Error("Rate limit exceeded. Please try again later.");
+  }
 
   // Verify ownership
   const where: any = {
@@ -403,6 +424,12 @@ export async function updatePatientActionDB(
   revalidatePath("/patients");
   revalidatePath(`/patients/${id}`);
 
+  // Audit log
+  await auditUpdate("patient", id, {
+    changedFields: Object.keys(updateData),
+    after: updateData,
+  });
+
   return mapRowToPatient(patient);
 }
 
@@ -412,6 +439,12 @@ export async function updatePatientActionDB(
 export async function deletePatientAction(id: string): Promise<void> {
   const { clinicId, branchId } = await getClinicAndBranchId();
   if (!clinicId) throw new Error("Unauthorized");
+
+  // Check rate limit (10 deletes per minute)
+  const rateLimit = await checkRateLimit("deletePatient", RATE_LIMITS.MUTATION_DELETE);
+  if (!rateLimit.success) {
+    throw new Error("Rate limit exceeded. Please try again later.");
+  }
 
   // Verify ownership before deleting
   const where: any = {
@@ -432,6 +465,12 @@ export async function deletePatientAction(id: string): Promise<void> {
   await prisma.patients.update({
     where: { id },
     data: { deletedAt: new Date(), isActive: false },
+  });
+
+  // Audit log
+  await auditDelete("patient", id, {
+    fullName: existing.fullName,
+    phone: existing.phone,
   });
 
   // Revalidate to update UI

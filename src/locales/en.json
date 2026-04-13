@@ -235,8 +235,17 @@
       "clearAcknowledged": "Clear Acknowledged",
       "unacknowledged": "Unacknowledged",
       "acknowledged": "Acknowledged",
-      "noAlerts": "No alerts - Inventory is in good shape"
-    }
+      "noAlerts": "No alerts - Inventory is in good shape",
+      "lowStockMessage": "{name}: Low stock ({quantity} remaining)",
+      "outOfStockMessage": "{name} is out of stock",
+      "expiringMessage": "{name} expires on {date}",
+      "expiredMessage": "{name} has expired"
+    },
+    "loadError": "Failed to load inventory",
+    "createError": "Failed to add item",
+    "updateError": "Failed to update item",
+    "deleteError": "Failed to delete item",
+    "loading": "Loading..."
   },
   "Common": {
     "search": "Search...",

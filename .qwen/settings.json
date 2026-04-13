@@ -21,7 +21,8 @@
       "Bash(tasklist)",
       "Bash(docker ps *)",
       "Bash(docker port *)",
-      "Bash(true)"
+      "Bash(true)",
+      "Bash(find *)"
     ]
   },
   "$version": 3

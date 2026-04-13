@@ -3,6 +3,8 @@
 // =============================================================================
 // SmileCraft CMS — Branch Server Actions
 // ✅ Migrated to Prisma ORM with branch access validation
+// ✅ Rate limiting applied to all mutation actions
+// ✅ Audit logging integrated
 // =============================================================================
 
 import { revalidatePath } from "next/cache";
@@ -10,6 +12,8 @@ import prisma from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import type { BranchData, BranchFull } from "./types";
 import { z } from "zod";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { auditCreate, auditUpdate, auditDelete } from "@/lib/audit";
 
 // ─── Zod Schemas (must be in this file for validation) ────────────────────────
 
@@ -165,7 +169,7 @@ export async function createBranchAction(name: string): Promise<{ success: boole
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  
+
   if (!user) {
     throw new Error("Unauthorized: Please log in.");
   }
@@ -177,6 +181,12 @@ export async function createBranchAction(name: string): Promise<{ success: boole
 
   if (!dbUser?.clinicId) {
     throw new Error("Unauthorized: No clinic associated with user.");
+  }
+
+  // Check rate limit (20 creates per minute)
+  const rateLimit = await checkRateLimit("createBranch", RATE_LIMITS.MUTATION_CREATE);
+  if (!rateLimit.success) {
+    throw new Error("Rate limit exceeded. Please try again later.");
   }
 
   if (!name.trim()) {
@@ -197,6 +207,12 @@ export async function createBranchAction(name: string): Promise<{ success: boole
     },
   });
 
+  // Audit log
+  await auditCreate("branch", crypto.randomUUID(), {
+    name: name.trim(),
+    code: branchCode,
+  });
+
   revalidatePath("/");
   return { success: true };
 }
@@ -213,6 +229,12 @@ export async function switchBranchAction(branchId: string): Promise<{ success: b
 
   if (!user) {
     throw new Error("Unauthorized: Please log in.");
+  }
+
+  // Check rate limit (10 updates per minute)
+  const rateLimit = await checkRateLimit("switchBranch", RATE_LIMITS.MUTATION_UPDATE);
+  if (!rateLimit.success) {
+    throw new Error("Rate limit exceeded. Please try again later.");
   }
 
   const dbUser = await prisma.users.findUnique({
@@ -285,6 +307,12 @@ export async function updateBranchAction(
     return { success: false, error: "غير مصرح" };
   }
 
+  // Check rate limit (50 updates per minute)
+  const rateLimit = await checkRateLimit("updateBranch", RATE_LIMITS.MUTATION_UPDATE);
+  if (!rateLimit.success) {
+    throw new Error("Rate limit exceeded. Please try again later.");
+  }
+
   const validation = UpdateBranchSchema.safeParse(data);
   if (!validation.success) {
     return {
@@ -332,6 +360,12 @@ export async function updateBranchAction(
       },
     });
 
+    // Audit log
+    await auditUpdate("branch", id, {
+      changedFields: ["name", "code"],
+      after: { name: name.trim(), code: code.trim() },
+    });
+
     revalidatePath("/branches");
     revalidatePath("/");
     return { success: true };
@@ -350,6 +384,12 @@ export async function deleteBranchAction(
   const clinicId = await getCurrentUserClinicId();
   if (!clinicId) {
     return { success: false, error: "غير مصرح" };
+  }
+
+  // Check rate limit (10 deletes per minute)
+  const rateLimit = await checkRateLimit("deleteBranch", RATE_LIMITS.MUTATION_DELETE);
+  if (!rateLimit.success) {
+    throw new Error("Rate limit exceeded. Please try again later.");
   }
 
   const validation = DeleteBranchSchema.safeParse(data);
@@ -392,6 +432,12 @@ export async function deleteBranchAction(
   try {
     await prisma.clinic_branches.delete({
       where: { id },
+    });
+
+    // Audit log
+    await auditDelete("branch", id, {
+      name: branch.name,
+      code: branch.code,
     });
 
     revalidatePath("/branches");

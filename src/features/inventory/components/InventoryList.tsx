@@ -24,21 +24,18 @@ import { InventoryItem, InventoryCategory, StockStatus } from "../types";
 import { inventoryService } from "../services/inventoryService";
 
 interface InventoryListProps {
+  items: InventoryItem[];
+  isLoading: boolean;
   onEdit: (item: InventoryItem) => void;
   onAdd: () => void;
+  onDelete: (id: string) => void;
 }
 
-export function InventoryList({ onEdit, onAdd }: InventoryListProps) {
+export function InventoryList({ items, isLoading, onEdit, onAdd, onDelete }: InventoryListProps) {
   const t = useTranslations("Inventory");
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCategory, setFilterCategory] = useState<InventoryCategory | "ALL">("ALL");
   const [filterStatus, setFilterStatus] = useState<StockStatus | "ALL">("ALL");
-  const [items, setItems] = useState<InventoryItem[]>(() => inventoryService.getAllItems());
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  useMemo(() => {
-    setItems(inventoryService.getAllItems());
-  }, [refreshKey]);
 
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
@@ -102,17 +99,26 @@ export function InventoryList({ onEdit, onAdd }: InventoryListProps) {
 
   const handleDelete = (id: string) => {
     if (confirm(t("confirmDelete"))) {
-      inventoryService.deleteItem(id);
-      setRefreshKey((k) => k + 1);
+      onDelete(id);
     }
   };
 
   const totalValue = inventoryService.getInventoryValue(items);
   const lowStockCount = inventoryService.getLowStockItems(items).length;
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 text-blue-500 animate-spin" />
+        <span className="ms-3 text-sm font-medium text-slate-500">
+          {t("loading") || "Loading..."}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="glass-card p-4 rounded-2xl">
           <div className="flex items-center gap-3">
@@ -160,7 +166,6 @@ export function InventoryList({ onEdit, onAdd }: InventoryListProps) {
         </div>
       </div>
 
-      {/* Header Actions */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
           <Package className="h-5 w-5" />
@@ -172,7 +177,6 @@ export function InventoryList({ onEdit, onAdd }: InventoryListProps) {
         </Button>
       </div>
 
-      {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4 glass-card p-4 transition-all duration-300">
         <div className="relative flex-1">
           <Input
@@ -210,7 +214,6 @@ export function InventoryList({ onEdit, onAdd }: InventoryListProps) {
         </div>
       </div>
 
-      {/* Items Table */}
       <div className="overflow-hidden glass-card transition-all duration-300">
         <table className="w-full text-left rtl:text-right">
           <thead className="bg-slate-50/50 text-xs font-semibold uppercase text-slate-500 dark:bg-slate-800/50">
@@ -302,3 +305,5 @@ export function InventoryList({ onEdit, onAdd }: InventoryListProps) {
     </div>
   );
 }
+
+import { Loader2 } from "lucide-react";

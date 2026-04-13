@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { generateId } from "@/lib/utils/id";
 import { InventoryItem, InventoryCategory } from "../types";
+import { Calendar } from "lucide-react";
 
 interface InventoryFormValues {
   name: string;
@@ -129,7 +130,7 @@ export function InventoryForm({
             </label>
             <select
               {...register("category")}
-              className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:bg-slate-900"
+              className="relative w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:bg-slate-900"
             >
               <option value="ANESTHETICS">{t("categories.anesthetics")}</option>
               <option value="MATERIALS">{t("categories.materials")}</option>
@@ -258,8 +259,9 @@ export function InventoryForm({
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
               {t("expiryDate")}
             </label>
-            <input
+            <Input
               type="date"
+              icon={<Calendar className="h-4 w-4" />}
               {...register("expiryDate")}
               className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:bg-slate-900"
             />
@@ -274,7 +276,7 @@ export function InventoryForm({
             {...register("notes")}
             placeholder={t("notesPlaceholder")}
             rows={3}
-            className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:bg-slate-900"
+            className="relative w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:bg-slate-900"
           />
         </div>
       </div>

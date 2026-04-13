@@ -235,8 +235,17 @@
       "clearAcknowledged": "مسح المقرّة",
       "unacknowledged": "غير مقرّة",
       "acknowledged": "مقرّة",
-      "noAlerts": "لا توجد تنبيهات - المخزون بحالة جيدة"
-    }
+      "noAlerts": "لا توجد تنبيهات - المخزون بحالة جيدة",
+      "lowStockMessage": "{name}: المخزون منخفض ({quantity} متبقي)",
+      "outOfStockMessage": "نفذ من {name}",
+      "expiringMessage": "{name} ينتهي في {date}",
+      "expiredMessage": "{name} منتهي الصلاحية"
+    },
+    "loadError": "فشل في تحميل المخزون",
+    "createError": "فشل في إضافة العنصر",
+    "updateError": "فشل في تحديث العنصر",
+    "deleteError": "فشل في حذف العنصر",
+    "loading": "جاري التحميل..."
   },
   "Common": {
     "search": "بحث...",

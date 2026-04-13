@@ -18,6 +18,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClinicAndUserDirectly } from "@/lib/direct-db";
 import { signupSchema } from "./schema";
+import { checkSignupRateLimit } from "@/lib/rate-limit";
 
 // ---------------------------------------------------------------------------
 // State type
@@ -44,6 +45,18 @@ export async function signupAction(
   _prevState: SignupState,
   formData: FormData,
 ): Promise<SignupState> {
+  // Check rate limit first (3 signups per minute)
+  const rateLimit = await checkSignupRateLimit();
+  if (!rateLimit.success) {
+    return {
+      errors: {
+        form: [
+          "Too many signup attempts. Please wait before trying again.",
+        ],
+      },
+    };
+  }
+
   // ── 1. Extract & validate ─────────────────────────────────────────────
   const raw = {
     clinicName: (formData.get("clinicName") as string | null) ?? "",

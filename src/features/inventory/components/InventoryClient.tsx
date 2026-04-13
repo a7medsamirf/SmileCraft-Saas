@@ -1,13 +1,19 @@
 "use client";
 
-import React, { useState } from "react";
-import { Package, FileText, Bell, UserPlus } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Package, FileText, Bell } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { InventoryList } from "@/features/inventory/components/InventoryList";
 import { InventoryForm } from "@/features/inventory/components/InventoryForm";
 import { InventoryAlerts } from "@/features/inventory/components/InventoryAlerts";
 import { InventoryItem } from "@/features/inventory/types";
 import { PageTransition } from "@/components/ui/PageTransition";
+import { 
+  getInventoryItemsAction, 
+  createInventoryItemAction, 
+  updateInventoryItemAction,
+  deleteInventoryItemAction 
+} from "@/features/inventory/serverActions";
 
 type InventoryTab = "list" | "add" | "edit" | "alerts" | "reports";
 
@@ -15,22 +21,61 @@ export function InventoryClient() {
   const t = useTranslations("Inventory");
   const [activeTab, setActiveTab] = useState<InventoryTab>("list");
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+  const [items, setItems] = useState<InventoryItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleAddItem = (data: Partial<InventoryItem>) => {
-    import("@/features/inventory/services/inventoryService").then(({ inventoryService }) => {
-      inventoryService.saveItem(data as InventoryItem);
-      setActiveTab("list");
-    });
+  const loadItems = async () => {
+    try {
+      setIsLoading(true);
+      const data = await getInventoryItemsAction();
+      setItems(data);
+      setError(null);
+    } catch (err) {
+      console.error("Failed to load inventory:", err);
+      setError(t("loadError") || "Failed to load inventory");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleEditItem = (data: Partial<InventoryItem>) => {
-    import("@/features/inventory/services/inventoryService").then(({ inventoryService }) => {
+  useEffect(() => {
+    loadItems();
+  }, []);
+
+  const handleAddItem = async (data: Partial<InventoryItem>) => {
+    try {
+      await createInventoryItemAction(data as Omit<InventoryItem, "id">);
+      await loadItems();
+      setActiveTab("list");
+    } catch (err) {
+      console.error("Failed to create item:", err);
+      setError(t("createError") || "Failed to create item");
+    }
+  };
+
+  const handleEditItem = async (data: Partial<InventoryItem>) => {
+    try {
       if (data.id) {
-        inventoryService.saveItem(data as InventoryItem);
+        await updateInventoryItemAction(data as Omit<InventoryItem, "id"> & { id: string });
+        await loadItems();
         setEditingItem(null);
         setActiveTab("list");
       }
-    });
+    } catch (err) {
+      console.error("Failed to update item:", err);
+      setError(t("updateError") || "Failed to update item");
+    }
+  };
+
+  const handleDeleteItem = async (id: string) => {
+    try {
+      await deleteInventoryItemAction(id);
+      await loadItems();
+    } catch (err) {
+      console.error("Failed to delete item:", err);
+      setError(t("deleteError") || "Failed to delete item");
+    }
   };
 
   const handleEditClick = (item: InventoryItem) => {
@@ -51,7 +96,7 @@ export function InventoryClient() {
           <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white flex items-center gap-3">
                 <div className="p-3 rounded-2xl bg-emerald-600/10 dark:bg-emerald-500/10">
                    <Package className="h-8 w-8 text-emerald-600 dark:text-emerald-500" />
-              </div>
+               </div>
             {t("title")}
           </h1>
           <p className="mt-2 text-slate-500 dark:text-slate-400 max-w-2xl">
@@ -59,8 +104,13 @@ export function InventoryClient() {
           </p>
         </div>
 
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-sm">
+            {error}
+          </div>
+        )}
+
         <div className="flex flex-col lg:flex-row gap-5 items-start">
-          {/* Sidebar Tabs */}
           <aside className="w-full lg:w-64 shrink-0 space-y-2 glass-card p-2 transition-all duration-300">
             {tabs.map((tab) => {
               const Icon = tab.icon;
@@ -83,11 +133,16 @@ export function InventoryClient() {
             })}
           </aside>
 
-          {/* Main Content Area */}
           <main className="flex-1 w-full p-1 transition-all duration-300">
             <div className="bg-white dark:bg-slate-900 glass-card p-6 sm:p-8 min-h-full">
               {activeTab === "list" && (
-                <InventoryList onEdit={handleEditClick} onAdd={() => setActiveTab("add")} />
+                <InventoryList 
+                  items={items}
+                  isLoading={isLoading}
+                  onEdit={handleEditClick} 
+                  onAdd={() => setActiveTab("add")}
+                  onDelete={handleDeleteItem}
+                />
               )}
 
               {activeTab === "add" && (
@@ -124,7 +179,7 @@ export function InventoryClient() {
                 </div>
               )}
 
-              {activeTab === "alerts" && <InventoryAlerts />}
+              {activeTab === "alerts" && <InventoryAlerts items={items} />}
 
               {activeTab === "reports" && (
                 <div className="text-center py-12">

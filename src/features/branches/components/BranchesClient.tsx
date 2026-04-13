@@ -132,7 +132,7 @@ export function BranchesClient({ initialBranches }: BranchesClientProps) {
             label={t("totalBranches")}
             value={branches.length.toString()}
             icon={<GitBranch className="h-6 w-6" />}
-            color="bg-blue-500"
+            color="bg-blue-500 text-white"
           />
           <StatCard
             label={t("activeBranches")}

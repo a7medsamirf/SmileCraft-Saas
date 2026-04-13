@@ -6,6 +6,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { InvoiceStatus, PaymentMethod, PaymentType } from "./types";
 import { z } from "zod";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { auditCreate, auditUpdate, auditDelete } from "@/lib/audit";
 
 // Validation schemas
 const paymentSchema = z.object({
@@ -74,6 +76,12 @@ export async function createPaymentAction(payload: {
   const clinicId = await getClinicId();
   if (!clinicId) throw new Error("Clinic not configured");
 
+  // Check rate limit (20 creates per minute)
+  const rateLimit = await checkRateLimit("createPayment", RATE_LIMITS.MUTATION_CREATE);
+  if (!rateLimit.success) {
+    throw new Error("Rate limit exceeded. Please try again later.");
+  }
+
   // Server-side validation
   const validation = paymentSchema.safeParse(payload);
   if (!validation.success) {
@@ -133,6 +141,13 @@ export async function createPaymentAction(payload: {
   // Revalidate only the specific paths that use invoice data
   revalidatePath("/dashboard/billing", "page");
   revalidatePath("/dashboard/finance", "page");
+
+  // Audit log
+  await auditCreate("payment", result.payment.id, {
+    invoiceId: payload.invoiceId,
+    amount: payload.amount,
+    method: payload.method,
+  });
 
   return result.payment;
 }
@@ -236,6 +251,12 @@ export async function createInvoiceFromCaseAction(payload: {
   const clinicId = await getClinicId();
   if (!clinicId) throw new Error("Clinic not configured");
 
+  // Check rate limit (20 creates per minute)
+  const rateLimit = await checkRateLimit("createInvoice", RATE_LIMITS.MUTATION_CREATE);
+  if (!rateLimit.success) {
+    throw new Error("Rate limit exceeded. Please try again later.");
+  }
+
   // Server-side validation
   const validation = invoiceFromCaseSchema.safeParse(payload);
   if (!validation.success) {
@@ -274,6 +295,13 @@ export async function createInvoiceFromCaseAction(payload: {
     // Revalidate only the specific paths that use invoice data
     revalidatePath("/dashboard/billing", "page");
     revalidatePath("/dashboard/finance", "page");
+
+    // Audit log
+    await auditCreate("invoice", invoice.id, {
+      patientId: payload.patientId,
+      amount: payload.amount,
+      procedure: payload.procedure,
+    });
 
     return { success: true, invoiceId: invoice.id };
   } catch (err) {

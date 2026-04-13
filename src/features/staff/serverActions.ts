@@ -12,7 +12,8 @@ import {
   PayrollRecord,
   PayrollStatus,
 } from "./types";
-import { MOCK_STAFF } from "./mock/staff.mock";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { auditCreate, auditUpdate, auditDelete } from "@/lib/audit";
 
 // ─── Auth helpers ─────────────────────────────────────────────────────────────
 
@@ -104,20 +105,21 @@ function mapPayrollRow(row: any): PayrollRecord {
 export async function getStaffMembersAction(): Promise<StaffMember[]> {
   try {
     const { clinicId } = await getClinicAndBranchId();
-    // Not authenticated → demo mode
-    if (!clinicId) return MOCK_STAFF;
+    
+    // Not authenticated or no clinic → return empty array
+    if (!clinicId) return [];
 
     const staff = await prisma.staff.findMany({
-      where: { clinicId },
+      where: { clinicId, isActive: true },
       orderBy: { fullName: "asc" },
     });
 
-    // Authenticated but no staff yet → real empty state (not mock)
-    if (!staff || staff.length === 0) return [];
-
+    // Return real data or empty array (no mock fallback)
     return staff.map(mapStaffRow);
-  } catch {
-    return MOCK_STAFF;
+  } catch (error) {
+    // Log error but return empty array instead of mock data
+    console.error("[getStaffMembersAction] Database error:", error);
+    return [];
   }
 }
 
@@ -127,6 +129,12 @@ export async function createStaffMemberAction(
   try {
     const { clinicId, branchId } = await getClinicAndBranchId();
     if (!clinicId) throw new Error("Unauthorized");
+
+    // Check rate limit (20 creates per minute)
+    const rateLimit = await checkRateLimit("createStaff", RATE_LIMITS.MUTATION_CREATE);
+    if (!rateLimit.success) {
+      throw new Error("Rate limit exceeded. Please try again later.");
+    }
 
     const newId = crypto.randomUUID();
     const now = new Date();
@@ -194,10 +202,22 @@ export async function createStaffMemberAction(
     });
 
     revalidatePath("/dashboard/staff");
+
+    // Audit log
+    await auditCreate("staff", staff.id, {
+      fullName: staff.fullName,
+      specialty: staff.specialty,
+      role: staff.role,
+    });
+
     return mapStaffRow(staff);
   } catch (err) {
-    console.error("[createStaffMemberAction]", err);
-    return { id: crypto.randomUUID(), ...payload, joinDate: payload.joinDate || new Date().toISOString().slice(0, 10) } as StaffMember;
+    // Log error with details for debugging
+    console.error("[createStaffMemberAction] Error:", err);
+    
+    // Return specific error message for known errors, generic for unknown
+    const message = err instanceof Error ? err.message : "فشل في إنشاء الموظف";
+    throw new Error(message);
   }
 }
 
@@ -208,6 +228,12 @@ export async function updateStaffMemberAction(
   try {
     const { clinicId } = await getClinicAndBranchId();
     if (!clinicId) throw new Error("Unauthorized");
+
+    // Check rate limit (50 updates per minute)
+    const rateLimit = await checkRateLimit("updateStaff", RATE_LIMITS.MUTATION_UPDATE);
+    if (!rateLimit.success) {
+      throw new Error("Rate limit exceeded. Please try again later.");
+    }
 
     const patch: Record<string, unknown> = {};
     if (payload.fullName !== undefined) patch.fullName = payload.fullName;
@@ -226,36 +252,43 @@ export async function updateStaffMemberAction(
     });
 
     revalidatePath("/dashboard/staff");
+
+    // Audit log
+    await auditUpdate("staff", id, {
+      changedFields: Object.keys(patch),
+    });
+
     return mapStaffRow(staff);
   } catch (err) {
-    console.error("[updateStaffMemberAction]", err);
-    return {
-      id,
-      fullName: "",
-      role: "ASSISTANT",
-      certifications: [],
-      email: "",
-      phone: "",
-      joinDate: "",
-      salary: 0,
-      isActive: true,
-      ...payload,
-    } as StaffMember;
+    console.error("[updateStaffMemberAction] Error:", err);
+    const message = err instanceof Error ? err.message : "فشل في تحديث الموظف";
+    throw new Error(message);
   }
 }
 
 export async function deleteStaffMemberAction(id: string): Promise<void> {
   try {
     const { clinicId } = await getClinicAndBranchId();
-    if (!clinicId) return;
+    if (!clinicId) throw new Error("Unauthorized");
+
+    // Check rate limit (10 deletes per minute)
+    const rateLimit = await checkRateLimit("deleteStaff", RATE_LIMITS.MUTATION_DELETE);
+    if (!rateLimit.success) {
+      throw new Error("Rate limit exceeded. Please try again later.");
+    }
 
     await prisma.staff.delete({
       where: { id, clinicId },
     });
 
+    // Audit log
+    await auditDelete("staff", id, {});
+
     revalidatePath("/dashboard/staff");
   } catch (err) {
-    console.error("[deleteStaffMemberAction]", err);
+    console.error("[deleteStaffMemberAction] Error:", err);
+    const message = err instanceof Error ? err.message : "فشل في حذف الموظف";
+    throw new Error(message);
   }
 }
 

@@ -236,6 +236,7 @@ export async function bookAppointmentAction(
       data: {
         id: crypto.randomUUID(),
         clinicId,
+        branchId: branchId ?? null, // ✅ Fix: Assign to user's branch
         patientId: patient.id,
         date: appointmentDate, // Local date object (not UTC)
         startTime: result.data.time,

@@ -5,6 +5,14 @@ import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { InventoryItem, InventoryCategory } from "./types";
+import {
+  createInventoryItemSchema,
+  updateInventoryItemSchema,
+  updateQuantitySchema,
+  deleteInventoryItemSchema
+} from "./schema";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { auditCreate, auditUpdate, auditDelete } from "@/lib/audit";
 
 async function getClinicAndBranchId(): Promise<{ clinicId: string; branchId: string | null }> {
   const supabase = await createClient();
@@ -52,6 +60,12 @@ export async function getInventoryItemsAction() {
 export async function createInventoryItemAction(payload: Omit<InventoryItem, "id">) {
   const { clinicId, branchId } = await getClinicAndBranchId();
 
+  // Check rate limit (20 creates per minute)
+  const rateLimit = await checkRateLimit("createInventory", RATE_LIMITS.MUTATION_CREATE);
+  if (!rateLimit.success) {
+    throw new Error("Rate limit exceeded. Please try again later.");
+  }
+
   const item = await prisma.inventory_items.create({
     data: {
       id: crypto.randomUUID(),
@@ -75,11 +89,25 @@ export async function createInventoryItemAction(payload: Omit<InventoryItem, "id
   });
 
   revalidatePath("/dashboard/inventory");
+
+  // Audit log
+  await auditCreate("inventory", item.id, {
+    name: item.name,
+    category: item.category,
+    quantity: item.quantity,
+  });
+
   return item;
 }
 
 export async function updateInventoryQuantityAction(id: string, newQuantity: number) {
   const { clinicId, branchId } = await getClinicAndBranchId();
+
+  // Check rate limit (50 updates per minute)
+  const rateLimit = await checkRateLimit("updateInventory", RATE_LIMITS.MUTATION_UPDATE);
+  if (!rateLimit.success) {
+    throw new Error("Rate limit exceeded. Please try again later.");
+  }
 
   const where: any = { id, clinicId };
   // Verify branch ownership if user has a branch
@@ -93,14 +121,31 @@ export async function updateInventoryQuantityAction(id: string, newQuantity: num
   });
 
   revalidatePath("/dashboard/inventory");
+
+  // Audit log
+  await auditUpdate("inventory", id, {
+    changedFields: ["quantity"],
+    after: { quantity: newQuantity },
+  });
+
   return item;
 }
 
 export async function deleteInventoryItemAction(id: string) {
+  const validated = deleteInventoryItemSchema.safeParse({ id });
+  if (!validated.success) {
+    throw new Error(validated.error.message);
+  }
+
   const { clinicId, branchId } = await getClinicAndBranchId();
 
-  const where: any = { id, clinicId };
-  // Verify branch ownership if user has a branch
+  // Check rate limit (10 deletes per minute)
+  const rateLimit = await checkRateLimit("deleteInventory", RATE_LIMITS.MUTATION_DELETE);
+  if (!rateLimit.success) {
+    throw new Error("Rate limit exceeded. Please try again later.");
+  }
+
+  const where: any = { id: validated.data.id, clinicId };
   if (branchId) {
     where.branchId = branchId;
   }
@@ -109,5 +154,43 @@ export async function deleteInventoryItemAction(id: string) {
     where
   });
 
+  // Audit log
+  await auditDelete("inventory", validated.data.id, {});
+
   revalidatePath("/dashboard/inventory");
+}
+
+export async function updateInventoryItemAction(payload: Omit<InventoryItem, "id"> & { id: string }) {
+  const validated = updateInventoryItemSchema.safeParse(payload);
+  if (!validated.success) {
+    throw new Error(validated.error.message);
+  }
+
+  const { clinicId, branchId } = await getClinicAndBranchId();
+  const data = validated.data;
+
+  const where: any = { id: data.id, clinicId };
+  if (branchId) {
+    where.branchId = branchId;
+  }
+
+  const item = await prisma.inventory_items.update({
+    where,
+    data: {
+      name: data.name,
+      category: data.category,
+      quantity: data.quantity,
+      minStock: data.minQuantity,
+      unit: data.unit,
+      price: data.unitPrice,
+      supplier: data.supplier,
+      expiryDate: data.expiryDate ? new Date(data.expiryDate) : null,
+      location: data.location,
+      notes: data.notes,
+      updatedAt: new Date(),
+    }
+  });
+
+  revalidatePath("/dashboard/inventory");
+  return item;
 }

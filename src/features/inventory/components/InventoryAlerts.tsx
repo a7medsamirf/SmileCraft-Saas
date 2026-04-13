@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   AlertTriangle,
   Bell,
@@ -14,25 +14,82 @@ import {
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/Button";
 import { inventoryService } from "../services/inventoryService";
-import { InventoryAlert } from "../types";
+import { InventoryItem, InventoryAlert } from "../types";
 
-export function InventoryAlerts() {
+interface InventoryAlertsProps {
+  items: InventoryItem[];
+}
+
+export function InventoryAlerts({ items }: InventoryAlertsProps) {
   const t = useTranslations("Inventory");
-  const [alerts, setAlerts] = useState<InventoryAlert[]>(() => inventoryService.getAlerts());
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [acknowledgedIds, setAcknowledgedIds] = useState<Set<string>>(new Set());
 
-  React.useEffect(() => {
-    setAlerts(inventoryService.getAlerts());
-  }, [refreshKey]);
+  const alerts = useMemo(() => {
+    const generatedAlerts: InventoryAlert[] = [];
+    const now = new Date();
+    const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    items.forEach((item) => {
+      if (item.expiryDate) {
+        const expiryDate = new Date(item.expiryDate);
+        if (expiryDate < now) {
+          generatedAlerts.push({
+            id: `${item.id}-expired`,
+            itemId: item.id,
+            itemName: item.name,
+            type: "EXPIRED",
+            message: t("alerts.expiredMessage", { name: item.name }),
+            createdAt: expiryDate.toISOString(),
+            acknowledged: acknowledgedIds.has(`${item.id}-expired`),
+          });
+        } else if (expiryDate < thirtyDaysFromNow) {
+          generatedAlerts.push({
+            id: `${item.id}-expiring`,
+            itemId: item.id,
+            itemName: item.name,
+            type: "EXPIRING_SOON",
+            message: t("alerts.expiringMessage", { name: item.name, date: expiryDate.toLocaleDateString() }),
+            createdAt: now.toISOString(),
+            acknowledged: acknowledgedIds.has(`${item.id}-expiring`),
+          });
+        }
+      }
+
+      if (item.quantity === 0) {
+        generatedAlerts.push({
+          id: `${item.id}-out`,
+          itemId: item.id,
+          itemName: item.name,
+          type: "OUT_OF_STOCK",
+          message: t("alerts.outOfStockMessage", { name: item.name }),
+          createdAt: now.toISOString(),
+          acknowledged: acknowledgedIds.has(`${item.id}-out`),
+        });
+      } else if (item.quantity <= item.minQuantity) {
+        generatedAlerts.push({
+          id: `${item.id}-low`,
+          itemId: item.id,
+          itemName: item.name,
+          type: "LOW_STOCK",
+          message: t("alerts.lowStockMessage", { name: item.name, quantity: item.quantity }),
+          createdAt: now.toISOString(),
+          acknowledged: acknowledgedIds.has(`${item.id}-low`),
+        });
+      }
+    });
+
+    return generatedAlerts.sort((a, b) => {
+      if (a.acknowledged !== b.acknowledged) return a.acknowledged ? 1 : -1;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, [items, acknowledgedIds, t]);
 
   const handleAcknowledge = (alertId: string) => {
-    inventoryService.acknowledgeAlert(alertId);
-    setRefreshKey((k) => k + 1);
+    setAcknowledgedIds((prev) => new Set([...prev, alertId]));
   };
 
   const handleClearAcknowledged = () => {
-    inventoryService.clearAcknowledgedAlerts();
-    setRefreshKey((k) => k + 1);
+    setAcknowledgedIds(new Set());
   };
 
   const getTypeIcon = (type: InventoryAlert["type"]) => {
@@ -66,7 +123,6 @@ export function InventoryAlerts() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
           <Bell className="h-5 w-5" />
@@ -84,7 +140,6 @@ export function InventoryAlerts() {
         )}
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-2 gap-4">
         <div className="glass-card p-4 rounded-2xl border border-amber-200 dark:border-amber-800">
           <div className="flex items-center gap-3">
@@ -110,7 +165,6 @@ export function InventoryAlerts() {
         </div>
       </div>
 
-      {/* Alerts List */}
       <div className="space-y-3">
         {alerts.map((alert) => (
           <div

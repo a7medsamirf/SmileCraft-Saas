@@ -107,6 +107,9 @@ export function Sidebar({
   const [branchesLoading, setBranchesLoading] = useState(false);
   const [sidebarUserName, setSidebarUserName] = useState<string | null>(userName || null);
 
+  // Find current branch name
+  const currentBranchName = branches.find((b) => b.id === currentBranchId)?.name ?? null;
+
   useEffect(() => {
     setMounted(true);
     // Load branches
@@ -193,7 +196,7 @@ export function Sidebar({
       {/* Main Sidebar (Desktop fixed, Mobile animated) */}
       <motion.aside
         className={cn(
-          "fixed inset-y-0 z-50 flex w-72 flex-col justify-between border-slate-200 glass md:sticky md:top-0 md:h-screen transition-all duration-300 ease-in-out md:translate-x-0",
+          "fixed overflow-x-scroll inset-y-0 z-50 flex w-72 flex-col justify-between border-slate-200 glass md:sticky md:top-0 md:h-screen transition-all duration-300 ease-in-out md:translate-x-0",
           direction === "rtl" ? "right-0 border-l" : "left-0 border-r",
           isOpen
             ? "translate-x-0"

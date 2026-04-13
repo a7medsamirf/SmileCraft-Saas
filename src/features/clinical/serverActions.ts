@@ -17,6 +17,8 @@ import {
   InvoiceMode,
 } from "./types/treatmentPlan";
 import type { ClinicalCase, ClinicalCasePayload } from "./types/clinicalCase";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { auditCreate, auditUpdate, auditDelete } from "@/lib/audit";
 
 // ---------------------------------------------------------------------------
 // Auth helper — returns the current user and their context
@@ -238,6 +240,12 @@ export async function createTreatmentAction(
     const { user } = await getUserContext();
     if (!user) return null;
 
+    // Check rate limit (20 creates per minute)
+    const rateLimit = await checkRateLimit("createTreatment", RATE_LIMITS.MUTATION_CREATE);
+    if (!rateLimit.success) {
+      throw new Error("Rate limit exceeded. Please try again later.");
+    }
+
     const treatment = await prisma.treatments.create({
       data: {
         id: crypto.randomUUID(),
@@ -252,6 +260,14 @@ export async function createTreatmentAction(
     });
 
     revalidatePath("/dashboard/clinical");
+
+    // Audit log
+    await auditCreate("treatment", treatment.id, {
+      patientId,
+      toothNumber: item.toothId,
+      procedure: item.procedure,
+    });
+
     return treatment.id;
   } catch (err) {
     console.warn("[createTreatmentAction] Failed:", err);
@@ -296,6 +312,12 @@ export async function upsertClinicalCaseAction(
     const { user, clinicId } = await getUserContext();
     if (!user || !clinicId) return null;
 
+    // Check rate limit (50 updates per minute)
+    const rateLimit = await checkRateLimit("upsertClinicalCase", RATE_LIMITS.MUTATION_UPDATE);
+    if (!rateLimit.success) {
+      throw new Error("Rate limit exceeded. Please try again later.");
+    }
+
     const row = {
       clinicId,
       patientId: payload.patientId,
@@ -329,6 +351,22 @@ export async function upsertClinicalCaseAction(
     }
 
     revalidatePath("/dashboard/clinical");
+
+    // Audit log
+    const actionType = payload.id ? "UPDATE" : "CREATE";
+    if (payload.id) {
+      await auditUpdate("clinical_case", result.id, {
+        changedFields: ["toothNumber", "procedure"],
+        after: { toothNumber: payload.toothNumber, procedure: payload.procedure },
+      });
+    } else {
+      await auditCreate("clinical_case", result.id, {
+        patientId: payload.patientId,
+        toothNumber: payload.toothNumber,
+        procedure: payload.procedure,
+      });
+    }
+
     return mapClinicalCaseRow(result);
   } catch (err) {
     console.error("[upsertClinicalCaseAction]", err);
@@ -343,11 +381,20 @@ export async function deleteClinicalCaseAction(caseId: string): Promise<void> {
   try {
     const { user } = await getUserContext();
     if (!user) return;
-    
+
+    // Check rate limit (10 deletes per minute)
+    const rateLimit = await checkRateLimit("deleteClinicalCase", RATE_LIMITS.MUTATION_DELETE);
+    if (!rateLimit.success) {
+      throw new Error("Rate limit exceeded. Please try again later.");
+    }
+
     await prisma.clinical_cases.delete({
       where: { id: caseId },
     });
-    
+
+    // Audit log
+    await auditDelete("clinical_case", caseId, {});
+
     revalidatePath("/dashboard/clinical");
   } catch (err) {
     console.warn("[deleteClinicalCaseAction]", err);

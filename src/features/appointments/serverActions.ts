@@ -14,6 +14,8 @@ import type {
   AppointmentStatus as PrismaAppointmentStatus,
   Prisma,
 } from "@prisma/client";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { auditCreate, auditUpdate, auditDelete } from "@/lib/audit";
 
 /**
  * Auth helper — returns clinicId and branchId or null (never throws)
@@ -200,9 +202,15 @@ export async function createAppointmentActionDB(payload: {
     throw new Error(`Invalid appointment data: ${validation.error.flatten().formErrors.join(", ")}`);
   }
 
-  const { clinicId } = await getClinicAndBranchId();
+  const { clinicId, branchId } = await getClinicAndBranchId();
   if (!clinicId) throw new Error("Unauthorized: no clinic found for this user.");
-  
+
+  // Check rate limit (20 creates per minute)
+  const rateLimit = await checkRateLimit("createAppointment", RATE_LIMITS.MUTATION_CREATE);
+  if (!rateLimit.success) {
+    throw new Error("Rate limit exceeded. Please try again later.");
+  }
+
   const staffId = await getStaffId();
 
   // Verify patient belongs to this clinic
@@ -217,6 +225,7 @@ export async function createAppointmentActionDB(payload: {
   const dbApt = await prisma.appointments.create({
     data: {
       clinicId,
+      branchId: branchId ?? null, // ✅ Fix: Assign to user's branch
       patientId: payload.patientId,
       staffId: staffId,
       date: payload.date,
@@ -234,6 +243,15 @@ export async function createAppointmentActionDB(payload: {
 
   revalidatePath("/dashboard/calendar");
   revalidatePath("/dashboard/appointments");
+
+  // Audit log
+  await auditCreate("appointment", dbApt.id, {
+    patientId: payload.patientId,
+    date: payload.date.toISOString(),
+    startTime: payload.startTime,
+    type: payload.type,
+  });
+
   return mapPrismaToUIAppointment(dbApt as AppointmentWithPatientName);
 }
 
@@ -249,6 +267,12 @@ export async function updateAppointmentStatusAction(
 
   const { clinicId } = await getClinicAndBranchId();
   if (!clinicId) throw new Error("Unauthorized: no clinic found for this user.");
+
+  // Check rate limit (50 updates per minute)
+  const rateLimit = await checkRateLimit("updateAppointment", RATE_LIMITS.MUTATION_UPDATE);
+  if (!rateLimit.success) {
+    throw new Error("Rate limit exceeded. Please try again later.");
+  }
 
   // Verify ownership
   const existing = await prisma.appointments.findFirst({
@@ -275,6 +299,13 @@ export async function updateAppointmentStatusAction(
   revalidatePath("/dashboard/appointments");
   revalidatePath("/dashboard/appointments/queue");
   revalidatePath("/appointments/queue");
+
+  // Audit log
+  await auditUpdate("appointment", id, {
+    before: { status: existing.status },
+    after: { status },
+  });
+
   return mapPrismaToUIAppointment({
     ...dbApt,
     patients: dbApt.patients!,
@@ -290,13 +321,27 @@ export async function deleteAppointmentAction(id: string): Promise<void> {
 
   const { clinicId } = await getClinicAndBranchId();
   if (!clinicId) throw new Error("Unauthorized: no clinic found for this user.");
-  
+
+  // Check rate limit (10 deletes per minute)
+  const rateLimit = await checkRateLimit("deleteAppointment", RATE_LIMITS.MUTATION_DELETE);
+  if (!rateLimit.success) {
+    throw new Error("Rate limit exceeded. Please try again later.");
+  }
+
   const existing = await prisma.appointments.findFirst({
     where: { id, clinicId },
   });
   if (!existing) throw new Error("Unauthorized or not found");
 
   await prisma.appointments.delete({ where: { id } });
+
+  // Audit log
+  await auditDelete("appointment", id, {
+    patientId: existing.patientId,
+    date: existing.date.toISOString(),
+    status: existing.status,
+  });
+
   revalidatePath("/dashboard/calendar");
   revalidatePath("/dashboard/appointments");
   revalidatePath("/dashboard/appointments/queue");
