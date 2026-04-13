@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(github.com)",
+      "Bash(npx *)",
+      "Bash(findstr *)",
+      "Bash(taskkill *)",
+      "Bash(npm run *)",
+      "Bash(del *)",
+      "Bash(timeout *)",
+      "Bash(curl *)",
+      "Bash(select-object *)",
+      "Bash(select-string *)",
+      "Bash(type *)",
+      "Bash(powershell *)",
+      "Bash(node *)",
+      "Bash(dir *)",
+      "Bash(rmdir *)",
+      "Bash(npm install)",
+      "Bash(tasklist)",
+      "Bash(docker ps *)",
+      "Bash(docker port *)",
+      "Bash(true)"
+    ]
+  },
+  "$version": 3
+}

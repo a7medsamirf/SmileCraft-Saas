@@ -1,0 +1,44 @@
+/* Color System from Style Guide */
+:root {
+  /* Brand Colors */
+  --color-primary: #4F7CFF;
+  --color-secondary: #333333;
+  --color-warning: #FFC62A;
+  --color-danger: #F55157;
+  --color-success: #00AF6C;
+  --color-info: #5196F3;
+
+  /* Grayscale / UI Colors */
+  --color-background: #1D1F1F;
+  --color-gray-600: #333333;
+  --color-gray-500: #444444;
+  --color-gray-400: #666666;
+  --color-gray-300: #A5A5A5;
+  --color-gray-200: #D6D6D6;
+  --color-gray-100: #EEEEEE;
+  --color-gray-50: #F8F8F8;
+  --color-white: #FFFFFF;
+}
+
+/* SCSS Variables (Optional - mapping for cleaner usage in Sass files) */
+$primary: var(--color-primary);
+$secondary: var(--color-secondary);
+$warning: var(--color-warning);
+$danger: var(--color-danger);
+$success: var(--color-success);
+$info: var(--color-info);
+
+$bg-dark: var(--color-background);
+$white: var(--color-white);
+
+/* Gray Scale Map */
+$grays: (
+  "50": var(--color-gray-50),
+  "100": var(--color-gray-100),
+  "200": var(--color-gray-200),
+  "300": var(--color-gray-300),
+  "400": var(--color-gray-400),
+  "500": var(--color-gray-500),
+  "600": var(--color-gray-600)
+);
+

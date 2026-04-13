@@ -1,0 +1,50 @@
+import React from "react";
+import { ClinicalClient } from "@/features/clinical/components/ClinicalClient";
+import { getPatientByIdAction } from "@/features/patients/serverActions";
+import { getPatientClinicalDataAction } from "@/features/clinical/serverActions";
+import { createClient } from "@/lib/supabase/server";
+
+export const metadata = {
+  title: "العيادة | SmileCraft CMS",
+};
+
+interface Props {
+  params: Promise<{ locale: string }>;
+  searchParams: Promise<{ patientId?: string }>;
+}
+
+export default async function ClinicalPage({ searchParams }: Props) {
+  const { patientId } = await searchParams;
+
+  let initialPatient = null;
+  let initialClinicalData = null;
+  let clinicId = "";
+
+  // Get clinicId for realtime
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user) {
+    const { data: userData } = await supabase
+      .from("users")
+      .select("clinicId")
+      .eq("id", user.id)
+      .single();
+    clinicId = userData?.clinicId || "";
+  }
+
+  if (patientId) {
+    [initialPatient, initialClinicalData] = await Promise.all([
+      getPatientByIdAction(patientId),
+      getPatientClinicalDataAction(patientId),
+    ]);
+  }
+
+  return (
+    <ClinicalClient
+      key={patientId || "no-patient"}
+      initialPatient={initialPatient}
+      initialClinicalData={initialClinicalData}
+      clinicId={clinicId}
+    />
+  );
+}

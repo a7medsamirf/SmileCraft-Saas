@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* Brand Colors */
+  --color-primary: #62D0B6;
+  --color-secondary: #333333;
+  --color-warning: #FFC62A;
+  --color-danger: #F55157;
+  --color-success: #00AF6C;
+  --color-info: #5196F3;
+
+  /* Premium Grayscale Customization */
+  --color-slate-50: #F8FAFC;
+  --color-slate-100: #F1F5F9;
+  --color-slate-200: #E2E8F0;
+  --color-slate-300: #CBD5E1;
+  --color-slate-400: #94A3B8;
+  --color-slate-500: #64748B;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1E293B;
+  --color-slate-900: #0F172A;
+  --color-slate-950: #020617; /* Deeper for Premium Dark Mode */
+
+  /* Glassmorphism Helper (Standardized) */
+  --backdrop-blur-md: 12px;
+  --backdrop-blur-xl: 24px;
+}
+
+/* Base Body Styles */
+@layer base {
+  body {
+    @apply transition-colors duration-500;
+  }
+}
+
+/* Glass Effect Utilities */
+@layer utilities {
+  .glass {
+    @apply bg-white/70 backdrop-blur-md border border-white/20 dark:bg-slate-950/40 dark:border-slate-800/50;
+  }
+  
+  .glass-card {
+    @apply bg-white/60 backdrop-blur-xl border border-white/30 dark:bg-slate-900/40 dark:border-slate-800/40 rounded-[1rem];
+  }
+}
+
+/* Transition for all elements on theme change */
+* {
+  @apply transition-colors duration-300 border-slate-200 dark:border-slate-800/60;
+}

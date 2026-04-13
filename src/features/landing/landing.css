@@ -1,0 +1,149 @@
+/* ================================================================
+   SmileCraft CMS — Landing Page Styles
+   src/features/landing/landing.css
+   
+   Custom CSS for the dark-mode SaaS landing page.
+   Uses CSS custom properties and keyframe animations.
+   ================================================================ */
+
+/* ── Brand Colors ── */
+:root {
+  --brand: #2563EB;
+  --brand-dark: #1d4ed8;
+  --bg-deep: #060D18;
+  --bg-card: #0D1B2E;
+  --bg-section: #0B1525;
+  --text-muted: #6B849E;
+  --text-body: #E2EAF4;
+}
+
+/* ── Noise Overlay ── */
+.noise-overlay::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 180px;
+}
+
+/* ── Grid Backgrounds ── */
+.grid-bg {
+  background-image: linear-gradient(rgba(37, 99, 235, 0.10) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37, 99, 235, 0.10) 1px, transparent 1px);
+  background-size: 60px 60px;
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 50%, black 30%, transparent 100%);
+}
+
+.grid-bg-sm {
+  background-image: linear-gradient(rgba(37, 99, 235, 0.10) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37, 99, 235, 0.10) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* ── CTA Inner Background ── */
+.cta-inner-bg {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.12) 0%, rgba(37, 99, 235, 0.03) 100%);
+}
+
+/* ── 3D Mockup Frame ── */
+.mockup-frame-3d {
+  transform: perspective(1000px) rotateY(-6deg) rotateX(2deg);
+  transition: transform 0.4s ease;
+}
+.mockup-frame-3d:hover {
+  transform: perspective(1000px) rotateY(-2deg) rotateX(1deg);
+}
+
+/* ── Accent Underline ── */
+.accent-underline {
+  position: relative;
+}
+.accent-underline::after {
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  right: 0;
+  left: 0;
+  height: 3px;
+  background: var(--brand);
+  border-radius: 2px;
+  opacity: 0.5;
+}
+
+/* ── Mini Chart Bars ── */
+.mini-bar {
+  transition: background 0.2s;
+}
+.mini-bar:hover {
+  background: rgba(37, 99, 235, 0.3) !important;
+}
+
+/* ── Feature Card Hover ── */
+.landing-feature-card {
+  transition: all 0.3s ease;
+}
+.landing-feature-card:hover {
+  border-color: rgba(37, 99, 235, 0.2) !important;
+  transform: translateY(-4px);
+}
+.landing-feature-card:hover .feature-topline {
+  opacity: 1 !important;
+}
+
+/* ── Step Hover ── */
+.step-item:hover .step-circle {
+  background: rgba(37, 99, 235, 0.1);
+  border-color: var(--brand);
+  box-shadow: 0 0 0 6px #0B1525, 0 0 20px rgba(37, 99, 235, 0.2);
+}
+
+/* ── Testimonial Card Hover ── */
+.testi-card:hover {
+  border-color: rgba(37, 99, 235, 0.12);
+  transform: translateY(-3px);
+}
+
+/* ── FAQ Item ── */
+.faq-item:hover {
+  border-color: rgba(37, 99, 235, 0.12);
+}
+
+/* ── Social Button Hover ── */
+.social-btn:hover {
+  background: rgba(37, 99, 235, 0.1);
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+/* ── Button Styles ── */
+.btn-primary:hover {
+  background: var(--brand-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 28px rgba(37, 99, 235, 0.3);
+}
+
+.hero-primary-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(37, 99, 235, 0.4);
+}
+
+/* ── Italic Serif ── */
+.italic-serif {
+  font-family: var(--font-playfair), "Playfair Display", serif;
+  font-style: italic;
+}
+
+/* ── Fluid Title ── */
+.fluid-title {
+  font-size: clamp(28px, 3.5vw, 44px);
+  line-height: 1.2;
+}
+
+.hero-title {
+  font-size: clamp(36px, 4.5vw, 58px);
+  line-height: 1.18;
+}

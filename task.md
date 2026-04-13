@@ -1,0 +1,26 @@
+# Prisma Migration & Branch Isolation Tasks
+
+- [ ] `settings/serverActions.ts` (Business Hours & Services Migration)
+  - [ ] Update `getClinicId` bootstrapper to return `{ clinicId, branchId }`
+  - [ ] Migrate `clinic_notification_settings` to Prisma
+  - [ ] Upgrade fetch/save to use `branch_business_hours` with `branchId`
+  - [ ] Migrate `services` to Prisma
+- [ ] `branches/serverActions.ts`
+  - [ ] Migrate `getBranchesAction` and `createBranchAction` to Prisma
+  - [ ] Add branch access validation to `switchBranchAction`
+- [ ] `patients/serverActions.ts`
+  - [ ] Replace `supabase.from("patient")` with Prisma
+  - [ ] Apply `where: { clinicId, branchId }`
+  - [ ] Implement Auto-Assign orphaned records mechanism
+- [ ] `clinical/serverActions.ts`
+  - [ ] Replace `supabase.from` queries with Prisma for cases
+  - [ ] Apply `branchId` filtering
+  - [ ] Implement Auto-Assign orphaned cases mechanism
+- [ ] `staff/serverActions.ts`
+  - [ ] Migrate queries to Prisma
+  - [ ] Bind new staff to the requesting admin's `branchId`
+- [ ] `inventory/serverActions.ts`
+  - [ ] Apply `where: { clinicId, branchId }` to existing queries to prevent data bleeding
+- [ ] Final Verification
+  - [ ] Run typescript compiler
+  - [ ] Manual test scenarios
