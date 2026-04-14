@@ -91,12 +91,20 @@ export function RealtimeAppointmentHandler({
 
   useEffect(() => {
     // Guard: clinicId must be a non-empty string
-    if (!clinicId) return
+    if (!clinicId) {
+      console.warn('[RealtimeAppointmentHandler] No clinicId provided - realtime disabled');
+      return;
+    }
+
+    console.log('[RealtimeAppointmentHandler] Initializing with clinicId:', clinicId);
 
     const supabase = createClient()
     let isMounted = true
 
     // ── Subscribe ────────────────────────────────────────────────────────
+    // Note: We don't filter by clinicId in the realtime subscription because
+    // Supabase RLS policies already ensure users only see their clinic's data.
+    // The router.refresh() call will re-fetch only the current user's clinic data.
     const channel = supabase
       .channel(`smilecraft:queue:${clinicId}`)
       .on(
@@ -105,7 +113,7 @@ export function RealtimeAppointmentHandler({
           event: '*',          // Listen for INSERT | UPDATE | DELETE
           schema: 'public',
           table: 'appointments',
-          filter: `clinicId=eq.${clinicId}`,
+          // No filter - RLS policies handle clinic isolation
         },
         (payload) => {
           if (!isMounted) return

@@ -20,6 +20,8 @@ import {
   X,
   History,
   Printer,
+  Lock,
+  FileText,
 } from "lucide-react";
 import { useTranslations, useLocale } from "next-intl";
 import { PrintableInvoice } from "./PrintableInvoice";
@@ -43,11 +45,24 @@ interface PlanBuilderProps {
 interface StatusCheckboxProps {
   status: TreatmentStatus;
   onToggle: () => void;
+  locked?: boolean;
 }
 
-function StatusCheckbox({ status, onToggle }: StatusCheckboxProps) {
+function StatusCheckbox({ status, onToggle, locked }: StatusCheckboxProps) {
   const baseClasses =
     "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 cursor-pointer transition-all duration-300 hover:scale-110 active:scale-95";
+
+  // Locked: item came from clinical record — cannot be toggled back
+  if (locked && status === TreatmentStatus.COMPLETED) {
+    return (
+      <div
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-emerald-500 bg-emerald-50 shadow-emerald-500/20 shadow-sm dark:border-emerald-400/50 dark:bg-emerald-950/30 cursor-not-allowed"
+        title="مكتمل عبر السجل السريري — لتغيير الحالة افتح السجل السريري للسن"
+      >
+        <Lock className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+      </div>
+    );
+  }
 
   switch (status) {
     case TreatmentStatus.PLANNED:
@@ -280,7 +295,12 @@ export function PlanBuilder({
   }, [plan]);
 
   // Cycle through statuses: PLANNED → IN_PROGRESS → COMPLETED → PLANNED
+  // Exception: items locked via clinical record cannot be toggled back
   const handleToggleStatus = (item: PlanItem) => {
+    // If COMPLETED from clinical record — block toggle
+    if (item.fromClinicalRecord && item.status === TreatmentStatus.COMPLETED) {
+      return;
+    }
     const statusCycle: Record<TreatmentStatus, TreatmentStatus> = {
       [TreatmentStatus.PLANNED]: TreatmentStatus.IN_PROGRESS,
       [TreatmentStatus.IN_PROGRESS]: TreatmentStatus.COMPLETED,
@@ -377,6 +397,7 @@ export function PlanBuilder({
               <StatusCheckbox
                 status={item.status}
                 onToggle={() => handleToggleStatus(item)}
+                locked={item.fromClinicalRecord}
               />
 
               {/* Tooth ID circle */}
@@ -420,6 +441,16 @@ export function PlanBuilder({
 
               {/* Status Badge */}
               {getStatusBadge(item.status)}
+
+              {/* Clinical record lock indicator */}
+              {item.fromClinicalRecord && item.status === TreatmentStatus.COMPLETED && (
+                <div
+                  title="اكتمل عبر السجل السريري"
+                  className="flex items-center justify-center rounded-full p-1 bg-emerald-100 dark:bg-emerald-900/30"
+                >
+                  <FileText className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+                </div>
+              )}
             </div>
           ))
         )}

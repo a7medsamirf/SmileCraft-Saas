@@ -127,7 +127,7 @@ export async function getPatientClinicalDataAction(patientId: string): Promise<{
       }),
       prisma.clinical_cases.findMany({
         where: { patientId },
-        select: { toothNumber: true },
+        select: { toothNumber: true, status: true },
       }),
     ]);
 
@@ -151,7 +151,43 @@ export async function getPatientClinicalDataAction(patientId: string): Promise<{
       ? (patient.treatmentHistory as unknown as CompletionRecord[])
       : [];
 
-    const treatments: PlanItem[] = treatmentsData.map((t) => ({
+    const teethWithCases = cases.map((r) => r.toothNumber);
+
+    // Mark treatments as fromClinicalRecord=true when a COMPLETED clinical case
+    // exists for the same tooth — this prevents accidental regression in PlanBuilder.
+    const completedCaseTeeth = new Set(
+      cases
+        .filter((c) => c.status === "COMPLETED")
+        .map((c) => c.toothNumber),
+    );
+
+    // ── Deduplication: keep only the highest-status row per tooth ──────────
+    const statusPriority = (s: string) =>
+      s === "COMPLETED" ? 2 : s === "IN_PROGRESS" ? 1 : 0;
+
+    const bestByTooth = new Map<string, typeof treatmentsData[0]>();
+    const staleDuplicateIds: string[] = [];
+
+    for (const t of treatmentsData) {
+      const key = t.toothNumber ?? "0";
+      const existing = bestByTooth.get(key);
+      if (!existing) {
+        bestByTooth.set(key, t);
+      } else if (statusPriority(t.status) > statusPriority(existing.status)) {
+        staleDuplicateIds.push(existing.id);
+        bestByTooth.set(key, t);
+      } else {
+        staleDuplicateIds.push(t.id);
+      }
+    }
+
+    if (staleDuplicateIds.length > 0) {
+      prisma.treatments
+        .deleteMany({ where: { id: { in: staleDuplicateIds } } })
+        .catch(() => {});
+    }
+
+    const treatmentsWithFlag: PlanItem[] = [...bestByTooth.values()].map((t) => ({
       id: t.id,
       toothId: t.toothNumber ? parseInt(t.toothNumber, 10) : 0,
       procedure: t.procedureName ?? "",
@@ -159,11 +195,12 @@ export async function getPatientClinicalDataAction(patientId: string): Promise<{
       estimatedCost: Number(t.cost ?? 0),
       status: t.status as TreatmentStatus ?? TreatmentStatus.PLANNED,
       completedAt: t.completedAt ? new Date(t.completedAt).toISOString() : undefined,
+      fromClinicalRecord: completedCaseTeeth.has(
+        t.toothNumber ? parseInt(t.toothNumber, 10) : -1,
+      ),
     }));
 
-    const teethWithCases = cases.map((r) => r.toothNumber);
-
-    return { mouthMap, treatments, teethWithCases, treatmentHistory };
+    return { mouthMap, treatments: treatmentsWithFlag, teethWithCases, treatmentHistory };
   } catch (err) {
     console.warn("[getPatientClinicalDataAction] Falling back to mock:", err);
     return {
@@ -350,7 +387,56 @@ export async function upsertClinicalCaseAction(
       });
     }
 
+    // ── Sync treatment plan item with clinical case status ─────────────────
+    // Find the treatment row for the same tooth and patient, then mirror
+    // the status so the PlanBuilder stays in sync with the clinical record.
+    try {
+      const existingTreatment = await prisma.treatments.findFirst({
+        where: {
+          patientId: payload.patientId,
+          toothNumber: payload.toothNumber.toString(),
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (existingTreatment) {
+        await prisma.treatments.update({
+          where: { id: existingTreatment.id },
+          data: {
+            status: payload.status,
+            completedAt:
+              payload.status === TreatmentStatus.COMPLETED
+                ? new Date()
+                : payload.status === TreatmentStatus.PLANNED
+                  ? null
+                  : existingTreatment.completedAt,
+            updatedAt: new Date(),
+          },
+        });
+      } else if (payload.procedure && payload.status !== TreatmentStatus.PLANNED) {
+        // No existing treatment yet — create one so the plan reflects this case
+        await prisma.treatments.create({
+          data: {
+            id: crypto.randomUUID(),
+            patientId: payload.patientId,
+            toothNumber: payload.toothNumber.toString(),
+            procedureName: payload.procedure,
+            procedureType: payload.procedureKey ?? "",
+            cost: payload.estimatedCost,
+            status: payload.status,
+            completedAt:
+              payload.status === TreatmentStatus.COMPLETED ? new Date() : null,
+            updatedAt: new Date(),
+          },
+        });
+      }
+    } catch (syncErr) {
+      // Non-fatal — log but don't fail the clinical case save
+      console.warn("[upsertClinicalCaseAction] Failed to sync treatment status:", syncErr);
+    }
+
     revalidatePath("/dashboard/clinical");
+
 
     // Audit log
     const actionType = payload.id ? "UPDATE" : "CREATE";
@@ -444,17 +530,42 @@ export async function replaceTreatmentPlanAction(
       return plan;
     }
 
-    // Delete all existing PLANNED treatments for this patient
+    // ── Guard: find teeth that already have an active (non-PLANNED) treatment ──
+    // These must NEVER be overwritten by a new PLANNED row, even if the client
+    // sends a stale plan due to a race condition.
+    const activeTreatments = await prisma.treatments.findMany({
+      where: {
+        patientId,
+        status: { in: [TreatmentStatus.IN_PROGRESS, TreatmentStatus.COMPLETED] },
+        toothNumber: { in: plan.map((p) => p.toothId.toString()) },
+      },
+      select: { toothNumber: true },
+    });
+    const activeToothSet = new Set(activeTreatments.map((t) => t.toothNumber));
+
+    // Only keep items for teeth that do NOT have an active treatment
+    const safeToInsert = plan.filter(
+      (item) => !activeToothSet.has(item.toothId.toString()),
+    );
+
+    if (safeToInsert.length === 0) {
+      // Nothing to insert — all teeth are already covered by active treatments.
+      // Still return the original plan items so the caller has something to work with.
+      return plan;
+    }
+
+    // Delete existing PLANNED rows only for the safe-to-insert teeth
     await prisma.treatments.deleteMany({
       where: {
         patientId,
         status: TreatmentStatus.PLANNED,
+        toothNumber: { in: safeToInsert.map((p) => p.toothId.toString()) },
       },
     });
 
-    // Build insert rows
+    // Build insert rows (always status=PLANNED — active statuses are handled above)
     const now = new Date();
-    const rows = plan.map((item) => ({
+    const rows = safeToInsert.map((item) => ({
       id: crypto.randomUUID(),
       patientId,
       toothNumber: item.toothId.toString(),
@@ -503,7 +614,41 @@ export async function getTreatmentPlanAction(patientId: string): Promise<PlanIte
 
     if (treatments.length === 0) return [];
 
-    const plan: PlanItem[] = treatments.map((t) => ({
+    // ── Deduplication: keep only the highest-status row per tooth ──────────
+    // Priority: COMPLETED(2) > IN_PROGRESS(1) > PLANNED(0)
+    const statusPriority = (s: string) =>
+      s === "COMPLETED" ? 2 : s === "IN_PROGRESS" ? 1 : 0;
+
+    const bestByTooth = new Map<string, typeof treatments[0]>();
+    const staleDuplicateIds: string[] = [];
+
+    for (const t of treatments) {
+      const key = t.toothNumber ?? "0";
+      const existing = bestByTooth.get(key);
+      if (!existing) {
+        bestByTooth.set(key, t);
+      } else if (statusPriority(t.status) > statusPriority(existing.status)) {
+        // Current row has higher priority → demote the old one
+        staleDuplicateIds.push(existing.id);
+        bestByTooth.set(key, t);
+      } else {
+        // Current row is a lower-priority duplicate → mark for removal
+        staleDuplicateIds.push(t.id);
+      }
+    }
+
+    // Clean up stale duplicates from DB (heal data from previous bug)
+    if (staleDuplicateIds.length > 0) {
+      prisma.treatments
+        .deleteMany({ where: { id: { in: staleDuplicateIds } } })
+        .catch((err) =>
+          console.warn("[getTreatmentPlanAction] Duplicate cleanup failed:", err),
+        );
+    }
+
+    const dedupedTreatments = [...bestByTooth.values()];
+
+    const plan: PlanItem[] = dedupedTreatments.map((t) => ({
       id: t.id,
       toothId: t.toothNumber ? parseInt(t.toothNumber, 10) : 0,
       procedure: t.procedureName ?? "",

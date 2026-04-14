@@ -12,6 +12,7 @@ import {
   Stethoscope,
   CalendarDays,
   FileText,
+  Calendar,
   PlusCircle,
   ChevronDown,
   ChevronUp,
@@ -29,6 +30,7 @@ import {
   upsertClinicalCaseAction,
 } from "../serverActions";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import type { AppointmentTooth } from "@/features/appointments/serverActions";
 import { PROCEDURE_BY_KEY } from "@/features/appointments/constants/procedures";
@@ -505,9 +507,10 @@ export function ToothCasePanel({
               {/* Session Date */}
               <div>
                 <label className={LABEL_CLS}>{t("caseDate")}</label>
-                <input
+                <Input
                   type="date"
                   value={form.sessionDate}
+                  icon={<Calendar className="h-4 w-4" />}
                   onChange={(e) => field("sessionDate", e.target.value)}
                   className={INPUT_CLS}
                 />

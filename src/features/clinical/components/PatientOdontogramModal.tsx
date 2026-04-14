@@ -4,14 +4,13 @@ import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Stethoscope, Loader2, ExternalLink } from "lucide-react";
 import { useTranslations, useLocale } from "next-intl";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { OdontogramView } from "./OdontogramView";
 import { ToothStatus, generateEmptyMouthMap, MouthMap } from "../types/odontogram";
 import {
   getPatientClinicalDataAction,
 } from "../serverActions";
 import { getPatientAppointmentsWithTeethAction, AppointmentTooth } from "@/features/appointments/serverActions";
-import { Button } from "@/components/ui/Button";
 
 interface PatientOdontogramModalProps {
   isOpen: boolean;
@@ -28,6 +27,7 @@ export function PatientOdontogramModal({
 }: PatientOdontogramModalProps) {
   const t = useTranslations("Clinical");
   const locale = useLocale();
+  const router = useRouter();
 
   const [isLoading, setIsLoading] = useState(false);
   const [mouthMap, setMouthMap] = useState<MouthMap>([]);
@@ -42,6 +42,13 @@ export function PatientOdontogramModal({
     procedureExtraction: ToothStatus.MISSING,
     procedureWisdomExtraction: ToothStatus.MISSING,
   };
+
+  function handleGoToDetailedDiagnosis() {
+    if (!patientId) return;
+    // Close modal first, then navigate
+    onClose();
+    router.push(`/${locale}/clinical?patientId=${patientId}`);
+  }
 
   useEffect(() => {
     if (isOpen && patientId) {
@@ -183,15 +190,15 @@ export function PatientOdontogramModal({
                 <p className="text-[12px] text-slate-500 font-medium">
                   {t("welcomeMessage")}
                 </p>
-                <Link
-                  href={`/${locale}/clinical?patientId=${patientId}`}
-                  onClick={onClose}
+                <button
+                  type="button"
+                  onClick={handleGoToDetailedDiagnosis}
+                  disabled={!patientId}
+                  className="flex rounded-xl gap-2 bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-600/20 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2"
                 >
-                  <Button className="rounded-xl gap-2 bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-600/20">
-                    <ExternalLink className="w-4 h-4" />
-                    الذهاب للتشخيص التفصيلي
-                  </Button>
-                </Link>
+                  <ExternalLink className="w-4 h-4" />
+                  الذهاب للتشخيص التفصيلي
+                </button>
               </div>
             </motion.div>
           </div>

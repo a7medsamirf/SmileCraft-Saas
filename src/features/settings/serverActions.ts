@@ -279,6 +279,7 @@ export async function saveBusinessHoursAction(
     create: {
       branchId,
       hours: hours as unknown as any,
+      updatedAt: new Date(),
     },
     update: {
       hours: hours as unknown as any,

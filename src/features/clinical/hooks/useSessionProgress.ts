@@ -16,6 +16,7 @@ import {
   useState,
   useEffect,
   startTransition,
+  useRef,
 } from "react";
 import { MouthMap, ToothStatus } from "../types/odontogram";
 import {
@@ -100,18 +101,43 @@ const PROCEDURE_TO_STATUS: Record<string, ToothStatus> = {
 // Helper: Generate plan from mouthMap
 // ---------------------------------------------------------------------------
 
+/**
+ * Generates plan items only for teeth that don't already have a
+ * COMPLETED or IN_PROGRESS treatment. Existing non-PLANNED items are
+ * preserved and merged in so the UI never loses completed work.
+ */
 function generatePlanFromMouthMap(
   mouthMap: MouthMap,
   t: ReturnType<typeof useTranslations>,
+  existingPlan: PlanItem[] = [],
 ): PlanItem[] {
-  // Safety check: ensure mouthMap is an array
   const safeMouthMap = Array.isArray(mouthMap) ? mouthMap : [];
-  
-  return safeMouthMap
+
+  // Build a quick lookup: toothId → most-advanced status already in the plan.
+  // Priority: COMPLETED > IN_PROGRESS > PLANNED
+  const existingByTooth = new Map<number, PlanItem>();
+  for (const item of existingPlan) {
+    const current = existingByTooth.get(item.toothId);
+    const priority = (s: TreatmentStatus) =>
+      s === TreatmentStatus.COMPLETED ? 2 : s === TreatmentStatus.IN_PROGRESS ? 1 : 0;
+    if (!current || priority(item.status) > priority(current.status)) {
+      existingByTooth.set(item.toothId, item);
+    }
+  }
+
+  // Keep all non-PLANNED items untouched (they have real DB IDs + history)
+  const survivingItems = existingPlan.filter(
+    (item) => item.status !== TreatmentStatus.PLANNED,
+  );
+  const survivingToothIds = new Set(survivingItems.map((i) => i.toothId));
+
+  // Generate new PLANNED items only for teeth not already covered
+  const freshItems = safeMouthMap
     .filter(
       (tooth) =>
         tooth.status !== ToothStatus.HEALTHY &&
-        tooth.status !== ToothStatus.MISSING,
+        tooth.status !== ToothStatus.MISSING &&
+        !survivingToothIds.has(tooth.id),
     )
     .map((tooth) => {
       let procedure = "";
@@ -141,6 +167,8 @@ function generatePlanFromMouthMap(
           break;
       }
 
+      if (!procedure) return null;
+
       return {
         id: `plan-${tooth.id}-${tooth.status}`,
         toothId: tooth.id,
@@ -148,8 +176,11 @@ function generatePlanFromMouthMap(
         procedureKey,
         estimatedCost: cost,
         status: TreatmentStatus.PLANNED,
-      };
-    });
+      } satisfies PlanItem;
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+
+  return [...survivingItems, ...freshItems];
 }
 
 // ---------------------------------------------------------------------------
@@ -169,6 +200,12 @@ export function useSessionProgress(
   });
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [savedPlan, setSavedPlan] = useState<PlanItem[]>([]);
+
+  // Always-fresh ref so async callbacks never read stale state
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   // React 19 useOptimistic for instant UI feedback
   const [optimisticState, addOptimisticUpdate] = useOptimistic(
@@ -290,32 +327,45 @@ export function useSessionProgress(
     ) => {
       if (!patientId) return;
 
-      const freshPlan = generatePlanFromMouthMap(newMouthMap, translator);
+      // Read the latest plan from the ref (never stale, even inside async callbacks)
+      const currentPlan = stateRef.current.plan;
 
-      if (freshPlan.length === 0) return;
+      // Merge: keep COMPLETED/IN_PROGRESS, generate PLANNED only for new teeth
+      const mergedPlan = generatePlanFromMouthMap(
+        newMouthMap,
+        translator,
+        currentPlan,
+      );
 
-      // Optimistically set the generated plan so the UI updates instantly
-      setState((prev) => ({ ...prev, plan: freshPlan }));
+      // Optimistic UI update
+      setState((prev) => ({ ...prev, plan: mergedPlan }));
+
+      // Only persist the brand-new PLANNED items (non-PLANNED items already
+      // exist in DB with real UUIDs — replaceTreatmentPlanAction only touches
+      // PLANNED rows, so they're safe).
+      const plannedOnly = mergedPlan.filter(
+        (item) => item.status === TreatmentStatus.PLANNED,
+      );
+
+      if (plannedOnly.length === 0) return;
 
       try {
-        // Persist to DB — returns items with real UUIDs from the database
-        const persistedPlan = await replaceTreatmentPlanAction(
-          patientId,
-          freshPlan,
-        );
-        // Only update if we got valid persisted items with DB IDs
-        if (persistedPlan && persistedPlan.length > 0 && persistedPlan[0].id) {
-          setState((prev) => ({ ...prev, plan: persistedPlan }));
+        const persisted = await replaceTreatmentPlanAction(patientId, plannedOnly);
+        if (persisted && persisted.length > 0 && persisted[0]?.id) {
+          // Swap temp IDs for real DB UUIDs without touching non-PLANNED items
+          setState((prev) => ({
+            ...prev,
+            plan: [
+              ...prev.plan.filter((i) => i.status !== TreatmentStatus.PLANNED),
+              ...persisted,
+            ],
+          }));
         }
       } catch (err) {
-        console.error(
-          "[useSessionProgress] regeneratePlan persist failed:",
-          err,
-        );
-        // Keep the optimistic state so the UI stays functional
+        console.error("[useSessionProgress] regeneratePlan persist failed:", err);
       }
     },
-    [patientId],
+    [patientId], // stateRef is a ref, intentionally excluded
   );
 
   // ---------------------------------------------------------------------------
@@ -325,8 +375,10 @@ export function useSessionProgress(
   // ---------------------------------------------------------------------------
   const updateItemStatus = useCallback(
     (itemId: string, newStatus: TreatmentStatus) => {
-      const targetItem = state.plan.find((p) => p.id === itemId);
+      const targetItem = stateRef.current.plan.find((p) => p.id === itemId);
       if (!targetItem) return;
+
+      const isTempId = itemId.startsWith("plan-") || !itemId.includes("-");
 
       const newRecord: CompletionRecord = {
         id: generateId(),
@@ -338,7 +390,7 @@ export function useSessionProgress(
         timestamp: new Date().toISOString(),
       };
 
-      const updatedPlan = state.plan.map((item) =>
+      const updatedPlan = stateRef.current.plan.map((item) =>
         item.id === itemId
           ? {
               ...item,
@@ -353,16 +405,28 @@ export function useSessionProgress(
 
       const updatedHistory: CompletionRecord[] = [
         newRecord,
-        ...state.history,
+        ...stateRef.current.history,
       ];
 
       startTransition(() => {
         addOptimisticUpdate({ itemId, newStatus });
         setState({ plan: updatedPlan, history: updatedHistory });
-        setHasUnsavedChanges(true);
       });
+
+      if (!isTempId) {
+        // Item already exists in DB with a real UUID → persist immediately
+        updateTreatmentStatusAction(itemId, newStatus).catch((err) => {
+          console.error("[updateItemStatus] DB sync failed:", err);
+        });
+        saveTreatmentHistoryAction(patientId, [newRecord, ...stateRef.current.history]).catch(
+          () => {},
+        );
+      } else {
+        // Item has a temp ID → needs full savePlan call
+        setHasUnsavedChanges(true);
+      }
     },
-    [state.plan, state.history, addOptimisticUpdate],
+    [patientId, addOptimisticUpdate],
   );
 
   // ---------------------------------------------------------------------------
@@ -380,25 +444,46 @@ export function useSessionProgress(
     }
 
     try {
-      const needsInsert = state.plan.filter(
-        (item) => item.id.startsWith("plan-") || !item.id.includes("-"),
+      // Split items by whether they have a real DB UUID or a temp ID
+      const isTempId = (id: string) => id.startsWith("plan-") || !id.includes("-");
+
+      // Items with temp IDs that are still PLANNED => insert via replaceTreatmentPlanAction
+      const plannedWithTempId = state.plan.filter(
+        (item) => item.status === TreatmentStatus.PLANNED && isTempId(item.id),
       );
 
-      let planToSave = state.plan;
+      // Items with real DB UUIDs (any status) => update status in-place
+      const withRealId = state.plan.filter((item) => !isTempId(item.id));
 
-      if (needsInsert.length > 0) {
-        const persistedPlan = await replaceTreatmentPlanAction(patientId, state.plan);
-        if (persistedPlan && persistedPlan.length > 0 && persistedPlan[0].id) {
-          planToSave = persistedPlan;
+      // Non-PLANNED items with temp IDs => persist individually via create
+      const nonPlannedWithTempId = state.plan.filter(
+        (item) => item.status !== TreatmentStatus.PLANNED && isTempId(item.id),
+      );
+
+      let planToSave: PlanItem[] = [...withRealId];
+
+      // 1. Insert new PLANNED items (replaces old PLANNED rows in DB)
+      if (plannedWithTempId.length > 0) {
+        const persistedPlanned = await replaceTreatmentPlanAction(patientId, plannedWithTempId);
+        if (persistedPlanned && persistedPlanned.length > 0 && persistedPlanned[0].id) {
+          planToSave = [...planToSave, ...persistedPlanned];
         }
       }
 
-      for (const item of planToSave) {
-        if (!item.id.startsWith("plan-")) {
-          const result = await updateTreatmentStatusAction(item.id, item.status);
-          if (!result.success) {
-            console.error(`[savePlan] Failed to update item ${item.id}:`, result.error);
-          }
+      // 2. Persist non-PLANNED items that have never been saved to DB
+      for (const item of nonPlannedWithTempId) {
+        const { createTreatmentAction } = await import("../serverActions");
+        const newId = await createTreatmentAction(patientId, item);
+        if (newId) {
+          planToSave = [...planToSave, { ...item, id: newId }];
+        }
+      }
+
+      // 3. Update statuses for items already in DB
+      for (const item of withRealId) {
+        const result = await updateTreatmentStatusAction(item.id, item.status);
+        if (!result.success) {
+          console.error(`[savePlan] Failed to update item ${item.id}:`, result.error);
         }
       }
 

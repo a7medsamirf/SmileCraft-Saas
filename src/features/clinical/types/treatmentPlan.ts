@@ -29,6 +29,12 @@ export interface PlanItem {
   status: TreatmentStatus;
   /** ISO date string when the procedure was completed */
   completedAt?: string;
+  /**
+   * True when the status was set from a clinical case record (ToothCasePanel).
+   * When true, the PlanBuilder should not allow toggling back to PLANNED
+   * unless the clinical record is explicitly re-opened and edited.
+   */
+  fromClinicalRecord?: boolean;
 }
 
 /**

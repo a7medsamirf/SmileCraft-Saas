@@ -6,7 +6,6 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { useActionState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Sparkles,
@@ -17,17 +16,29 @@ import {
   RotateCcw,
   Bot,
   User,
+  Database,
+  CheckCircle,
+  TrendingUp,
+  Users,
+  Calendar,
+  Receipt,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { sendGeminiMessageAction } from "@/lib/gemini/serverActions";
+import { sendSmartMessageAction } from "@/features/assistant/serverActions";
+import type { DataCard, SmartMessageResult } from "@/features/assistant/serverActions";
 import type { ChatMessage } from "@/lib/gemini/types";
 
 interface SmartAssistantChatProps {
   isConfigured: boolean;
 }
 
+interface EnrichedMessage extends ChatMessage {
+  dataCards?: DataCard[];
+  isDataMode?: boolean;
+}
+
 interface ActionState {
-  messages: ChatMessage[];
+  messages: EnrichedMessage[];
   isLoading: boolean;
   error: string | null;
 }
@@ -38,7 +49,15 @@ const initialState: ActionState = {
   error: null,
 };
 
-function chatReducer(state: ActionState, action: any): ActionState {
+type Action =
+  | { type: "SEND_MESSAGE"; payload: string }
+  | { type: "RECEIVE_RESPONSE"; payload: { content: string; dataCards?: DataCard[]; isDataMode?: boolean } }
+  | { type: "SET_ERROR"; payload: string }
+  | { type: "CLEAR_CHAT" }
+  | { type: "SET_LOADING"; payload: boolean }
+  | { type: "CLEAR_ERROR" };
+
+function chatReducer(state: ActionState, action: Action): ActionState {
   switch (action.type) {
     case "SEND_MESSAGE":
       return {
@@ -64,35 +83,21 @@ function chatReducer(state: ActionState, action: any): ActionState {
           {
             id: crypto.randomUUID(),
             role: "assistant",
-            content: action.payload,
+            content: action.payload.content,
+            dataCards: action.payload.dataCards,
+            isDataMode: action.payload.isDataMode,
             timestamp: new Date(),
           },
         ],
       };
     case "SET_ERROR":
-      return {
-        ...state,
-        isLoading: false,
-        error: action.payload,
-      };
+      return { ...state, isLoading: false, error: action.payload };
     case "CLEAR_CHAT":
       return initialState;
     case "SET_LOADING":
-      return {
-        ...state,
-        isLoading: action.payload,
-      };
-    case "COOLDOWN":
-      return {
-        ...state,
-        isLoading: true,
-        error: null,
-      };
+      return { ...state, isLoading: action.payload };
     case "CLEAR_ERROR":
-      return {
-        ...state,
-        error: null,
-      };
+      return { ...state, error: null };
     default:
       return state;
   }
@@ -147,33 +152,41 @@ export function SmartAssistantChat({ isConfigured }: SmartAssistantChatProps) {
     dispatch({ type: "SEND_MESSAGE", payload: message });
 
     try {
-      // Prepare all messages for context (last 10 messages for context window)
-      const messagesWithContext = [...state.messages, { role: "user" as const, content: message }]
-        .slice(-5)
-        .map((msg) => ({
-          role: msg.role === "user" ? "user" : "assistant",
-          content: msg.content,
-        }));
+      // Build chat history for context
+      const chatHistory = state.messages.slice(-6).map((msg) => ({
+        role: msg.role === "user" ? "user" : "assistant",
+        content: msg.content,
+      }));
 
-      const result = await sendGeminiMessageAction(messagesWithContext, locale);
+      // Single unified call
+      const result: SmartMessageResult = await sendSmartMessageAction(
+        message,
+        locale,
+        chatHistory,
+      );
 
       if (result.success && result.response) {
-        dispatch({ type: "RECEIVE_RESPONSE", payload: result.response });
+        dispatch({
+          type: "RECEIVE_RESPONSE",
+          payload: {
+            content: result.response,
+            dataCards: result.dataCards,
+            isDataMode: !!result.dataCards && result.dataCards.length > 0,
+          },
+        });
         setIsRateLimited(false);
         setCooldownSeconds(0);
       } else {
-        const isRateLimit = result.error?.includes("Rate limit") || 
-                           result.error?.includes("حد الاستخدام") ||
-                           result.error?.includes("rate limit");
-        
+        const isRateLimit =
+          result.error?.includes("Rate limit") ||
+          result.error?.includes("حد الاستخدام") ||
+          result.error?.includes("rate limit");
+
         if (isRateLimit) {
           setIsRateLimited(true);
           const waitTime = result.waitTimeSeconds || 30;
           setCooldownSeconds(waitTime);
-          dispatch({
-            type: "SET_ERROR",
-            payload: "RATE_LIMITED",
-          });
+          dispatch({ type: "SET_ERROR", payload: "RATE_LIMITED" });
         } else {
           dispatch({
             type: "SET_ERROR",
@@ -200,6 +213,18 @@ export function SmartAssistantChat({ isConfigured }: SmartAssistantChatProps) {
     dispatch({ type: "CLEAR_CHAT" });
   };
 
+  // Quick action buttons — locale-aware
+  const quickActions = [
+    { icon: Users, labelKey: "quickPatientCount" as const, sqlMode: true },
+    { icon: MessageSquare, labelKey: "quickTreatment" as const, sqlMode: false },
+    { icon: Calendar, labelKey: "quickTodayAppointments" as const, sqlMode: true },
+    { icon: Receipt, labelKey: "quickMonthlyPayments" as const, sqlMode: true },
+  ];
+
+  // =========================================================================
+  // Not configured state
+  // =========================================================================
+
   if (!isConfigured) {
     return (
       <div className="glass-card p-8 flex flex-col items-center justify-center min-h-[400px] text-center">
@@ -223,6 +248,110 @@ export function SmartAssistantChat({ isConfigured }: SmartAssistantChatProps) {
       </div>
     );
   }
+
+  // =========================================================================
+  // Render data card
+  // =========================================================================
+
+  function renderDataCard(card: DataCard, index: number) {
+    if (card.type === "count" || card.type === "sum") {
+      return (
+        <motion.div
+          key={index}
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="mt-3 p-4 rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border border-emerald-200 dark:border-emerald-800"
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <div className="p-1.5 rounded-lg bg-emerald-500/10">
+              {card.type === "count" ? (
+                <Users className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              ) : (
+                <TrendingUp className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              )}
+            </div>
+            <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase">
+              {t("dataFromSystem")}
+            </span>
+            <CheckCircle className="w-3 h-3 text-emerald-500 ms-auto" />
+          </div>
+          <p className="text-3xl font-black text-emerald-700 dark:text-emerald-300">
+            {typeof card.value === "number"
+              ? card.value.toLocaleString(locale === "ar" ? "ar-EG" : "en-US")
+              : card.value}
+          </p>
+          <p className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 mt-1">
+            {card.explanation}
+          </p>
+        </motion.div>
+      );
+    }
+
+    if (card.type === "table" && card.rows && card.rows.length > 0) {
+      return (
+        <motion.div
+          key={index}
+          initial={{ opacity: 0, y: 5 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-3 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden"
+        >
+          <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
+            <Database className="w-3.5 h-3.5 text-blue-500" />
+            <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400">
+              {t("dataFromSystem")}
+            </span>
+            <span className="text-[10px] text-slate-500 ms-auto">
+              {card.rows.length} {t("recordsFound")}
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[11px] border-collapse">
+              <thead>
+                <tr className="bg-slate-100 dark:bg-slate-900">
+                  {card.columns?.map((col) => (
+                    <th
+                      key={col}
+                      className="px-3 py-2 text-start font-bold text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap"
+                    >
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {card.rows.slice(0, 10).map((row, rowIdx) => (
+                  <tr
+                    key={rowIdx}
+                    className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors"
+                  >
+                    {card.columns?.map((col) => (
+                      <td
+                        key={col}
+                        className="px-3 py-2 text-slate-600 dark:text-slate-400 whitespace-nowrap"
+                      >
+                        {formatCellValue(row[col])}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {card.rows.length > 10 && (
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 p-2 text-center border-t border-slate-200 dark:border-slate-700">
+              {t("showingFirst", { count: 10, total: card.rows.length })}
+            </p>
+          )}
+        </motion.div>
+      );
+    }
+
+    return null;
+  }
+
+  // =========================================================================
+  // Main render
+  // =========================================================================
 
   return (
     <div className="glass-card flex flex-col h-[calc(100vh-20rem)] min-h-[600px] overflow-hidden">
@@ -289,25 +418,20 @@ export function SmartAssistantChat({ isConfigured }: SmartAssistantChatProps) {
 
               {/* Quick Actions */}
               <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg">
-                {[
-                  { icon: Sparkles, label: t("quickDiagnosis") },
-                  { icon: MessageSquare, label: t("quickTreatment") },
-                  { icon: Bot, label: t("quickAdvice") },
-                  { icon: MessageSquare, label: t("quickInformation") },
-                ].map((item, index) => (
+                {quickActions.map((item, index) => (
                   <motion.button
                     key={index}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.3 + index * 0.1 }}
                     onClick={() => {
-                      setInputValue(item.label);
+                      setInputValue(t(item.labelKey));
                       textareaRef.current?.focus();
                     }}
                     className="flex items-center gap-3 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-violet-500 dark:hover:border-violet-500 transition-all text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-violet-600 dark:hover:text-violet-400"
                   >
                     <item.icon className="w-5 h-5 text-violet-500" />
-                    {item.label}
+                    {t(item.labelKey)}
                   </motion.button>
                 ))}
               </div>
@@ -331,15 +455,32 @@ export function SmartAssistantChat({ isConfigured }: SmartAssistantChatProps) {
               )}
 
               <div
-                className={`max-w-[75%] rounded-2xl px-4 py-3 ${
+                className={`max-w-[80%] rounded-2xl px-4 py-3 ${
                   message.role === "user"
                     ? "bg-gradient-to-r from-blue-600 to-blue-700 text-white"
                     : "bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700"
                 }`}
               >
+                {/* Data mode indicator */}
+                {message.isDataMode && (
+                  <div className="flex items-center gap-2 mb-2 pb-2 border-b border-slate-200 dark:border-slate-700">
+                    <Database className="w-4 h-4 text-emerald-500" />
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                      {t("dataFromSystem")}
+                    </span>
+                    <CheckCircle className="w-3 h-3 text-emerald-500 ms-auto" />
+                  </div>
+                )}
+
                 <p className="text-sm whitespace-pre-wrap leading-relaxed">
                   {message.content}
                 </p>
+
+                {/* Data cards */}
+                {message.dataCards?.map((card, cardIdx) =>
+                  renderDataCard(card, cardIdx),
+                )}
+
                 <p
                   className={`text-[10px] mt-2 ${
                     message.role === "user"
@@ -347,10 +488,10 @@ export function SmartAssistantChat({ isConfigured }: SmartAssistantChatProps) {
                       : "text-slate-500 dark:text-slate-400"
                   }`}
                 >
-                  {message.timestamp.toLocaleTimeString(locale === "ar" ? "ar-EG" : "en-US", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
+                  {message.timestamp.toLocaleTimeString(
+                    locale === "ar" ? "ar-EG" : "en-US",
+                    { hour: "2-digit", minute: "2-digit" },
+                  )}
                 </p>
               </div>
 
@@ -440,4 +581,52 @@ export function SmartAssistantChat({ isConfigured }: SmartAssistantChatProps) {
       </div>
     </div>
   );
+}
+
+// =============================================================================
+// Utility: Format cell value for table display
+// =============================================================================
+
+function formatCellValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "boolean") return value ? "✅" : "❌";
+  if (value instanceof Date) return value.toLocaleDateString("ar-EG");
+  if (typeof value === "object") return JSON.stringify(value);
+
+  const str = String(value);
+
+  // Format ISO date strings
+  if (/^\d{4}-\d{2}-\d{2}T/.test(str)) {
+    try {
+      const d = new Date(str);
+      return d.toLocaleDateString("ar-EG", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    } catch {
+      return str;
+    }
+  }
+
+  // Format status labels
+  const statusMap: Record<string, string> = {
+    SCHEDULED: "📅 مجدول",
+    CONFIRMED: "✅ مؤكد",
+    COMPLETED: "✔️ مكتمل",
+    CANCELLED: "❌ ملغي",
+    NO_SHOW: "⚠️ لم يحضر",
+    PAID: "💰 مدفوعة",
+    PARTIAL: "⏳ جزئي",
+    OVERDUE: "🔴 متأخرة",
+    DRAFT: "📝 مسودة",
+    PLANNED: "📋 مخطط",
+    IN_PROGRESS: "🔄 جاري",
+    MALE: "👨 ذكر",
+    FEMALE: "👩 أنثى",
+  };
+
+  if (statusMap[str]) return statusMap[str];
+
+  return str;
 }

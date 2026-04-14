@@ -99,50 +99,66 @@ export function TodayQueueWithOptimism({
       const result = await updateAppointmentStatusAction(id, newStatus);
       if (!result.success) {
         console.error("[TodayQueueWithOptimism] Status update failed:", result.error);
-        toast.error(t("queueError") || "Status update failed");
+        toast.error(t("queueError") || "فشل في تحديث الحالة", {
+          icon: "❌",
+          duration: 4000,
+        });
         // Note: Realtime will eventually sync the correct state from DB
         // No need to rollback manually — the server re-fetch will override
       } else {
         // Show localized success notification with appointment details
         const appointment = mergedAppointments.find(a => a.id === id);
         const patientName = appointment?.patientName || t("queuePatient");
+
+        // Status change notifications with icons and colors
+        const statusNotifications: Record<AppointmentStatus, { message: string; icon: string; type: "success" | "error" | "info" }> = {
+          SCHEDULED: {
+            message: t("notificationScheduled", { defaultValue: `تم جدولة موعد جديد لـ ${patientName}` }),
+            icon: "📅",
+            type: "info",
+          },
+          CONFIRMED: {
+            message: t("notificationConfirm", { name: patientName, defaultValue: `تم تأكيد موعد ${patientName}` }),
+            icon: "🏥",
+            type: "success",
+          },
+          COMPLETED: {
+            message: t("notificationCompleted", { name: patientName, defaultValue: `تم إكمال موعد ${patientName}` }),
+            icon: "✅",
+            type: "success",
+          },
+          CANCELLED: {
+            message: t("notificationCancelled", { name: patientName, defaultValue: `تم إلغاء موعد ${patientName}` }),
+            icon: "🚫",
+            type: "error",
+          },
+          NO_SHOW: {
+            message: t("notificationNoShow", { name: patientName, defaultValue: `لم يحضر ${patientName} للموعد` }),
+            icon: "❌",
+            type: "error",
+          },
+        };
+
+        const notification = statusNotifications[newStatus];
         
-        if (newStatus === "CONFIRMED") {
-          toast.success(
-            t("notificationConfirm", { name: patientName }),
-            {
-              icon: "🏥",
-              className: "font-bold",
-              duration: 4000,
-            }
-          );
-        } else if (newStatus === "COMPLETED") {
-          toast.success(
-            t("notificationCompleted", { name: patientName }),
-            {
-              icon: "✅",
-              className: "font-bold",
-              duration: 4000,
-            }
-          );
-        } else if (newStatus === "NO_SHOW") {
-          toast.error(
-            t("notificationNoShow", { name: patientName }),
-            {
-              icon: "❌",
-              className: "font-bold border-red-100",
-              duration: 4000,
-            }
-          );
-        } else if (newStatus === "CANCELLED") {
-          toast.error(
-            t("notificationCancelled", { name: patientName }),
-            {
-              icon: "🚫",
-              className: "font-bold border-red-100",
-              duration: 4000,
-            }
-          );
+        if (notification.type === "success") {
+          toast.success(notification.message, {
+            icon: notification.icon,
+            className: "font-bold",
+            duration: 4000,
+          });
+        } else if (notification.type === "error") {
+          toast.error(notification.message, {
+            icon: notification.icon,
+            className: "font-bold border-red-100 dark:border-red-900/30",
+            duration: 4000,
+          });
+        } else {
+          toast(notification.message, {
+            icon: notification.icon,
+            className: "font-bold",
+            duration: 4000,
+          });
         }
       }
     });

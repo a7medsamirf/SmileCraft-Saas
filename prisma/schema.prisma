@@ -79,6 +79,14 @@ model audit_logs {
   users      users?   @relation(fields: [userId], references: [id])
 }
 
+model branch_business_hours {
+  id              String          @id @default(dbgenerated("(gen_random_uuid())::text"))
+  hours           Json            @default("[]")
+  updatedAt       DateTime
+  branchId        String          @unique
+  clinic_branches clinic_branches @relation(fields: [branchId], references: [id], onDelete: Cascade)
+}
+
 model clinic_branches {
   id                    String                 @id @default(dbgenerated("(gen_random_uuid())::text"))
   clinicId              String
@@ -100,16 +108,6 @@ model clinic_branches {
 
   @@index([clinicId])
   @@index([code])
-}
-
-model branch_business_hours {
-  id        String          @id @default(dbgenerated("(gen_random_uuid())::text"))
-  hours     Json            @default("[]")
-  updatedAt DateTime        @updatedAt
-  branchId  String          @unique
-  branch    clinic_branches @relation(fields: [branchId], references: [id], onDelete: Cascade)
-
-  @@map("branch_business_hours")
 }
 
 model clinic_notification_settings {

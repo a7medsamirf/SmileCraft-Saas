@@ -80,7 +80,12 @@ async function autoFixMissingBranch(): Promise<string | null> {
   });
 
   if (existingBranches) {
-    // Branch exists but user doesn't have one - get first branch and assign to user
+    // ✅ FIX: Only auto-assign if user has NO branchId set
+    // Don't overwrite if user already has a branch selected
+    if (dbUser.branchId) {
+      return dbUser.branchId; // User already has a branch, return it
+    }
+
     const firstBranch = await prisma.clinic_branches.findFirst({
       where: { clinicId },
       select: { id: true },

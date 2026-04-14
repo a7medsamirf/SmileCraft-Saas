@@ -121,20 +121,25 @@ export async function resolveUserContext(): Promise<{ clinicId: string; branchId
 }
 
 /**
- * Returns the authenticated user's role, or null.
+ * Returns the authenticated user's role from the users table.
  */
 export async function resolveUserRole(): Promise<string | null> {
   const user = await getAuthenticatedUser();
   if (!user) return null;
 
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("users")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
+  // Use Prisma to bypass RLS and get accurate role
+  try {
+    const prisma = (await import("@/lib/prisma")).default;
+    const dbUser = await prisma.users.findUnique({
+      where: { id: user.id },
+      select: { role: true },
+    });
 
-  return (data as { role?: string } | null)?.role ?? null;
+    return dbUser?.role ?? null;
+  } catch (error) {
+    console.error("[resolveUserRole] Error:", error);
+    return null;
+  }
 }
 
 /**

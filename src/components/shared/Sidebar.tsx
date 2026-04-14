@@ -106,9 +106,10 @@ export function Sidebar({
   const [branches, setBranches] = useState<Array<{ id: string; name: string; code: string; isActive: boolean }>>([]);
   const [branchesLoading, setBranchesLoading] = useState(false);
   const [sidebarUserName, setSidebarUserName] = useState<string | null>(userName || null);
+  const [resolvedBranchId, setResolvedBranchId] = useState<string | null>(currentBranchId ?? null);
 
-  // Find current branch name
-  const currentBranchName = branches.find((b) => b.id === currentBranchId)?.name ?? null;
+  // Find current branch name - use resolvedBranchId which updates when branches load
+  const currentBranchName = branches.find((b) => b.id === resolvedBranchId)?.name ?? null;
 
   useEffect(() => {
     setMounted(true);
@@ -118,6 +119,16 @@ export function Sidebar({
         setBranchesLoading(true);
         const data = await getBranchesAction();
         setBranches(data);
+
+        // If no branch was selected from server, auto-select the first active branch
+        if (!currentBranchId && data.length > 0) {
+          const firstActive = data.find((b) => b.isActive);
+          if (firstActive) {
+            setResolvedBranchId(firstActive.id);
+            // Update the database to persist this selection
+            await switchBranchAction(firstActive.id);
+          }
+        }
       } catch (err) {
         console.error("Failed to load branches:", err);
       } finally {
@@ -141,6 +152,7 @@ export function Sidebar({
   }, [currentBranchId]);
 
   const handleSwitchBranch = async (branchId: string) => {
+    setResolvedBranchId(branchId); // Update local state immediately
     await switchBranchAction(branchId);
     window.location.reload();
   };
@@ -209,15 +221,33 @@ export function Sidebar({
           {/* Logo Area */}
           <Link href="/" className="flex h-20 items-center gap-3 border-b border-slate-100 px-6 dark:border-slate-800/50">
             <div className="flex w-full items-center justify-center rounded-xl overflow-hidden">
-              <Logo 
-                logoUrl={clinicLogo} 
-                logoUrlDark={logoUrlDark} 
-                width={120} 
-                height={40} 
+              <Logo
+                logoUrl={clinicLogo}
+                logoUrlDark={logoUrlDark}
+                width={120}
+                height={40}
                 className="w-full h-full flex justify-center"
               />
             </div>
           </Link>
+
+          {/* Branch Navbar - Shows current branch name */}
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 dark:border-slate-800/50 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30">
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
+              <GitBranch className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                {t("currentBranch")}
+              </p>
+              <p className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate">
+                {currentBranchName ?? t("noBranchSelected")}
+              </p>
+            </div>
+            {currentBranchName && (
+              <div className="flex-shrink-0 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="Active Branch" />
+            )}
+          </div>
 
           <div className="flex w-full flex-col gap-2 px-3 py-4">
             {NAV_LINKS.map((link) => {
@@ -266,7 +296,7 @@ export function Sidebar({
           ) : (
             <BranchSwitcher
               branches={branches}
-              currentBranchId={currentBranchId || null}
+              currentBranchId={resolvedBranchId || null}
               onSwitch={handleSwitchBranch}
               onCreateBranch={handleCreateBranch}
             />
@@ -311,28 +341,15 @@ export function Sidebar({
               </span>
               <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">
                 {(() => {
-                  console.log("[Sidebar] Rendering role:", { userRole, userSpecialty });
-                  
-                  // If specialty exists, it's a doctor - show specialty directly
+                  // If specialty exists, show specialty (for doctors)
                   if (userSpecialty) {
                     return userSpecialty;
                   }
-                  // If role exists, translate the role
+                  // Always show UserRole from database
                   if (userRole) {
                     const roleKey = userRole.toLowerCase();
-                    console.log("[Sidebar] Translating role:", roleKey);
-                    // Try to translate the role, fallback to drTitle
-                    try {
-                      const translatedRole = t(`roles.${roleKey}`);
-                      console.log("[Sidebar] Translated role:", translatedRole);
-                      return translatedRole || t("drTitle");
-                    } catch (err) {
-                      console.error("[Sidebar] Translation error:", err);
-                      return t("drTitle");
-                    }
+                    return t(`roles.${roleKey}`);
                   }
-                  // Fallback to generic title
-                  return t("drTitle");
                 })()}
               </span>
             </div>

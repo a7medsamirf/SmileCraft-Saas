@@ -140,6 +140,15 @@ export default async function AppointmentsQueuePage({ params }: PageProps) {
           clinicId={clinicId}
           appointments={appointments}
         />
+
+        {/* Debug indicator - remove this after testing */}
+ {/*        {process.env.NODE_ENV === "development" && (
+          <div className="fixed bottom-4 right-4 z-50 bg-black/80 text-white px-3 py-2 rounded-lg text-xs font-mono">
+            Realtime Handler: ✅ Mounted (clinicId: {clinicId?.slice(0, 8)}...)
+            <br />
+            Check console for [RealtimeAppointmentHandler] logs
+          </div>
+        )} */}
       </div>
     </PageTransition>
   );

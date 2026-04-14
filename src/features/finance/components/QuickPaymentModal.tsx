@@ -2,6 +2,7 @@
 
 import React, { useState, useTransition } from "react";
 import { X, Wallet, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Invoice, formatCurrency } from "@/features/finance/types";
 import { quickCashPaymentAction } from "@/features/finance/serverActions";
 import toast from "react-hot-toast";
@@ -13,6 +14,7 @@ interface QuickPaymentModalProps {
 }
 
 export function QuickPaymentModal({ invoice, onClose, onSuccess }: QuickPaymentModalProps) {
+  const t = useTranslations("Finance");
   const [amount, setAmount] = useState<string>(invoice.balance.toFixed(0));
   const [notes, setNotes] = useState<string>("");
   const [isPending, startTransition] = useTransition();
@@ -26,7 +28,7 @@ export function QuickPaymentModal({ invoice, onClose, onSuccess }: QuickPaymentM
     setError("");
 
     if (!isValid) {
-      setError("المبلغ يجب أن يكون أكبر من صفر وأقل من أو يساوي الرصيد المتبقي");
+      setError(t("invalidAmount"));
       return;
     }
 
@@ -44,15 +46,15 @@ export function QuickPaymentModal({ invoice, onClose, onSuccess }: QuickPaymentM
             createdAt: result.invoice.createdAt,
           };
           onSuccess(updatedInvoice);
-          toast.success(`تم تسجيل دفعة ${formatCurrency(enteredAmount)} بنجاح ✅`);
+          toast.success(t("paymentSuccess", { amount: formatCurrency(enteredAmount) }));
           onClose();
         }
       } catch (err) {
         // Graceful error handling - prevent page reloads
         console.error("[QuickPaymentModal] Payment failed:", err);
-        const message = err instanceof Error ? err.message : "حدث خطأ أثناء تسجيل الدفعة";
+        const message = err instanceof Error ? err.message : t("paymentError");
         setError(message);
-        toast.error(`فشل تسجيل الدفعة: ${message}`, {
+        toast.error(`${t("paymentError")}: ${message}`, {
           duration: 4000,
         });
         // Don't close modal on error - let user retry
@@ -71,10 +73,10 @@ export function QuickPaymentModal({ invoice, onClose, onSuccess }: QuickPaymentM
             </div>
             <div>
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                تسجيل دفعة نقدية
+                {t("recordCashPayment")}
               </h3>
               <p className="text-xs text-slate-500">
-                فاتورة #{invoice.id.slice(0, 8).toUpperCase()}
+                {t("invoiceNumber")} #{invoice.id.slice(0, 8).toUpperCase()}
               </p>
             </div>
           </div>
@@ -89,19 +91,19 @@ export function QuickPaymentModal({ invoice, onClose, onSuccess }: QuickPaymentM
         {/* Patient Info */}
         <div className="mb-5 rounded-xl bg-slate-50 dark:bg-slate-800/50 p-4 border border-slate-200 dark:border-slate-700">
           <div className="flex justify-between text-sm">
-            <span className="text-slate-500">المريض:</span>
+            <span className="text-slate-500">{t("patient")}:</span>
             <span className="font-semibold text-slate-900 dark:text-white">{invoice.patientName}</span>
           </div>
           <div className="flex justify-between text-sm mt-2">
-            <span className="text-slate-500">الإجمالي:</span>
+            <span className="text-slate-500">{t("totalAmount")}:</span>
             <span className="font-semibold text-slate-900 dark:text-white">{formatCurrency(invoice.totalAmount)}</span>
           </div>
           <div className="flex justify-between text-sm mt-2">
-            <span className="text-slate-500">المدفوع:</span>
+            <span className="text-slate-500">{t("paidAmount")}:</span>
             <span className="font-semibold text-emerald-600 dark:text-emerald-500">{formatCurrency(invoice.paidAmount)}</span>
           </div>
           <div className="flex justify-between text-sm mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-            <span className="font-bold text-slate-700 dark:text-slate-300">المتبقي:</span>
+            <span className="font-bold text-slate-700 dark:text-slate-300">{t("remaining")}:</span>
             <span className="font-bold text-red-600 dark:text-red-500">{formatCurrency(remainingBalance)}</span>
           </div>
         </div>
@@ -141,8 +143,8 @@ export function QuickPaymentModal({ invoice, onClose, onSuccess }: QuickPaymentM
           {!isValid && amount && (
             <p className="mt-1.5 text-xs text-red-500">
               {enteredAmount > remainingBalance
-                ? "المبلغ أكبر من الرصيد المتبقي"
-                : "المبلغ يجب أن يكون أكبر من صفر"}
+                ? t("amountExceedsBalance")
+                : t("amountGreaterThanZero")}
             </p>
           )}
         </div>
@@ -150,14 +152,14 @@ export function QuickPaymentModal({ invoice, onClose, onSuccess }: QuickPaymentM
         {/* Notes */}
         <div className="mb-6">
           <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-            ملاحظات (اختياري)
+            {t("notes")} ({t("optional")})
           </label>
           <input
             type="text"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-3 text-sm text-slate-900 dark:text-white focus:border-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-500/20 transition-all"
-            placeholder="مثال: دفعة أولى"
+            placeholder={t("notesPlaceholder")}
           />
         </div>
 
@@ -169,7 +171,7 @@ export function QuickPaymentModal({ invoice, onClose, onSuccess }: QuickPaymentM
             disabled={isPending}
             className="w-1/3 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
           >
-            إلغاء
+            {t("cancel")}
           </button>
           <button
             type="button"
@@ -180,12 +182,12 @@ export function QuickPaymentModal({ invoice, onClose, onSuccess }: QuickPaymentM
             {isPending ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                جاري الحفظ...
+                {t("saving")}
               </>
             ) : (
               <>
                 <CheckCircle2 className="h-4 w-4" />
-                تأكيد الدفع
+                {t("confirmPayment")}
               </>
             )}
           </button>

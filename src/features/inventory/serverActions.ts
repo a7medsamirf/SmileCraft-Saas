@@ -194,3 +194,66 @@ export async function updateInventoryItemAction(payload: Omit<InventoryItem, "id
   revalidatePath("/dashboard/inventory");
   return item;
 }
+
+// ---------------------------------------------------------------------------
+// getLowStockItemsAction - Fetch items at or below minimum stock threshold
+// ---------------------------------------------------------------------------
+export async function getLowStockItemsAction() {
+  const { clinicId, branchId } = await getClinicAndBranchId();
+
+  const where: any = { 
+    clinicId,
+    isActive: true,
+  };
+  
+  // Apply branch isolation
+  if (branchId) {
+    where.branchId = branchId;
+  }
+
+  // Fetch items where quantity <= minStock (low stock threshold)
+  const lowStockItems = await prisma.inventory_items.findMany({
+    where: {
+      ...where,
+      OR: [
+        { quantity: { lte: prisma.inventory_items.fields.minStock } },
+        { quantity: 0 }, // Also include out-of-stock items
+      ],
+    },
+    orderBy: [
+      { quantity: "asc" }, // Lowest stock first
+      { minStock: "desc" },
+    ],
+  });
+
+  return lowStockItems.map(item => {
+    // Calculate severity based on stock level relative to minimum
+    const stockRatio = item.minStock > 0 ? item.quantity / item.minStock : 0;
+    
+    let severity: "critical" | "warning" | "ok";
+    if (item.quantity === 0 || stockRatio < 0.25) {
+      severity = "critical"; // Out of stock or very critical
+    } else if (stockRatio < 0.5) {
+      severity = "critical"; // Critical level
+    } else if (stockRatio <= 1) {
+      severity = "warning"; // Low but not critical
+    } else {
+      severity = "ok"; // Above minimum (shouldn't happen with our query)
+    }
+
+    return {
+      id: item.id,
+      name: item.name,
+      category: item.category as InventoryCategory,
+      quantity: item.quantity,
+      minQuantity: item.minStock,
+      unit: item.unit,
+      unitPrice: Number(item.price),
+      supplier: item.supplier || undefined,
+      expiryDate: item.expiryDate?.toISOString(),
+      location: item.location || undefined,
+      notes: item.notes || undefined,
+      severity,
+    };
+  }) as (InventoryItem & { severity: "critical" | "warning" | "ok" })[];
+}

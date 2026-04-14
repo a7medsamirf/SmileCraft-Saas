@@ -69,8 +69,8 @@ export function StaffList({
         return "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400";
       case "RECEPTIONIST":
         return "bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400";
-      case "ACCOUNTANT":
-        return "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400";
+      case "ADMIN":
+        return "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400";
     }
   };
 
@@ -100,7 +100,7 @@ export function StaffList({
           />
         </div>
         <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar">
-          {(["ALL", "DOCTOR", "ASSISTANT", "RECEPTIONIST", "ACCOUNTANT"] as const).map((role) => (
+          {(["ALL", "DOCTOR", "ASSISTANT", "RECEPTIONIST", "ADMIN"] as const).map((role) => (
             <Button
               key={role}
               variant={filterRole === role ? "primary" : "outline"}

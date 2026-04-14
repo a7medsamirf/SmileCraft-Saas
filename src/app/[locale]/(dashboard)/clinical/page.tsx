@@ -33,10 +33,22 @@ export default async function ClinicalPage({ searchParams }: Props) {
   }
 
   if (patientId) {
-    [initialPatient, initialClinicalData] = await Promise.all([
-      getPatientByIdAction(patientId),
-      getPatientClinicalDataAction(patientId),
-    ]);
+    console.log("[ClinicalPage] Loading patient data for patientId:", patientId);
+    
+    try {
+      [initialPatient, initialClinicalData] = await Promise.all([
+        getPatientByIdAction(patientId),
+        getPatientClinicalDataAction(patientId),
+      ]);
+      
+      if (!initialPatient) {
+        console.error("[ClinicalPage] Patient not found or access denied for patientId:", patientId);
+      } else {
+        console.log("[ClinicalPage] Successfully loaded patient:", initialPatient.fullName);
+      }
+    } catch (error) {
+      console.error("[ClinicalPage] Error loading patient data:", error);
+    }
   }
 
   return (

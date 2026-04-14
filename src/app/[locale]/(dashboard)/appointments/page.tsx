@@ -68,7 +68,11 @@ export default function AppointmentsPage() {
         </div>
 
         {/* Booking Modal */}
-        <BookingForm isOpen={isBookingOpen} onClose={() => setIsBookingOpen(false)} />
+        <BookingForm 
+          key={isBookingOpen ? "open" : "closed"} 
+          isOpen={isBookingOpen} 
+          onClose={() => setIsBookingOpen(false)} 
+        />
       </div>
     </PageTransition>
   );

@@ -72,6 +72,9 @@ export function ClinicalClient({
   const [isPending, startTransition] = useTransition();
   const searchParams = useSearchParams();
 
+  // Debug logging
+  console.log("[ClinicalClient] Props received - patient:", initialPatient?.fullName || "null", "- clinicalData:", initialClinicalData ? "present" : "null");
+
   // ── Inline mapping: procedureKey → ToothStatus ────────────────────────────
   const PROCEDURE_KEY_TO_STATUS: Record<string, ToothStatus> = {
     procedureCleaning: ToothStatus.CARIOUS,
@@ -578,6 +581,7 @@ export function ClinicalClient({
                 </AnimatePresence>
 
                 <BookingForm
+                  key={isBookingOpen ? "open" : "closed"}
                   isOpen={isBookingOpen}
                   onClose={() => {
                     setIsBookingOpen(false);

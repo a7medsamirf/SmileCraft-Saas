@@ -15,6 +15,7 @@ import {
   Loader2,
   AlertTriangle,
   Search,
+  Building2,
 } from "lucide-react";
 import { BranchForm } from "./BranchForm";
 import {
@@ -132,7 +133,7 @@ export function BranchesClient({ initialBranches }: BranchesClientProps) {
             label={t("totalBranches")}
             value={branches.length.toString()}
             icon={<GitBranch className="h-6 w-6" />}
-            color="bg-blue-500 text-white"
+            color="bg-blue-500"
           />
           <StatCard
             label={t("activeBranches")}
@@ -341,14 +342,19 @@ export function BranchesClient({ initialBranches }: BranchesClientProps) {
           {editingBranch && (
             <Modal onClose={() => setEditingBranch(null)}>
               <div className="p-6 sm:p-8">
-                <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-200 ">
                   <div>
-                    <h2 className="text-xl font-bold text-slate-900 dark:text-white">{t("editBranch")}</h2>
-                    <p className="text-sm text-slate-500 mt-1">{t("editBranchDescription")}</p>
+                    <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                      <span className="p-2 rounded-xl bg-blue-100 dark:bg-blue-900/30">
+                        <Building2 className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                      </span>
+                      {t("editBranch")}
+                    </h2>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t("editBranchDescription")}</p>
                   </div>
                   <button
                     onClick={() => setEditingBranch(null)}
-                    className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                    className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors text-slate-500 dark:text-slate-400 hover:text-red-500 dark:hover:text-red-400"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -370,7 +376,7 @@ export function BranchesClient({ initialBranches }: BranchesClientProps) {
             <Modal onClose={() => setDeletingBranch(null)}>
               <div className="p-6 sm:p-8">
                 <div className="flex items-start gap-4 mb-6">
-                  <div className="p-3 rounded-2xl bg-red-100 dark:bg-red-900/30 shrink-0">
+                  <div className="p-3 rounded-2xl bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 shrink-0">
                     <AlertTriangle className="w-6 h-6 text-red-600 dark:text-red-400" />
                   </div>
                   <div className="flex-1">
@@ -381,25 +387,31 @@ export function BranchesClient({ initialBranches }: BranchesClientProps) {
                     {(deletingBranch._count?.patients || 0) > 0 ||
                     (deletingBranch._count?.appointments || 0) > 0 ||
                     (deletingBranch._count?.users || 0) > 0 ? (
-                      <div className="mt-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-                        <p className="text-sm text-amber-700 dark:text-amber-400">
+                      <div className="mt-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200/60 dark:border-amber-800/40">
+                        <p className="text-sm font-medium text-amber-700 dark:text-amber-400 flex items-start gap-2">
+                          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
                           {t("deleteBranchWarning")}
                         </p>
                       </div>
                     ) : null}
                   </div>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex gap-3 pt-4 border-t border-slate-200 dark:border-slate-700/60">
                   <button
                     onClick={() => setDeletingBranch(null)}
-                    className="flex-1 py-3 px-4 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-semibold"
+                    className="flex-1 py-3 px-4 rounded-xl border border-slate-200 dark:border-slate-700 
+                               bg-white/50 dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800 
+                               transition-all font-semibold text-slate-700 dark:text-slate-300"
                   >
                     {t("cancel")}
                   </button>
                   <button
                     onClick={handleDelete}
                     disabled={isPending}
-                    className="flex-1 py-3 px-4 rounded-2xl bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 font-semibold shadow-lg shadow-red-500/20"
+                    className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-red-600 to-red-700 
+                               text-white hover:from-red-700 hover:to-red-800 
+                               disabled:opacity-50 disabled:cursor-not-allowed transition-all 
+                               flex items-center justify-center gap-2 font-semibold shadow-lg shadow-red-500/25"
                   >
                     {isPending ? (
                       <>
@@ -440,7 +452,7 @@ function StatCard({
     <div className="glass-card relative overflow-hidden p-6 transition-all duration-300 hover:scale-[1.02] hover:shadow-xl dark:hover:shadow-blue-500/5 group">
       <div className={`absolute -top-6 h-24 w-24 rounded-full opacity-10 blur-2xl transition-all group-hover:scale-150 start-[-1.5rem] end-[-1.5rem] ${color}`} />
       <div className="flex items-center gap-4">
-        <div className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-opacity-10 dark:bg-opacity-20 ${color} bg-current`}>
+        <div className={`text-white flex h-12 w-12 items-center justify-center rounded-2xl bg-opacity-10 dark:bg-opacity-20 ${color}`}>
           {icon}
         </div>
         <div>
@@ -468,7 +480,7 @@ function Modal({ children, onClose }: { children: React.ReactNode; onClose: () =
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="relative bg-white dark:bg-slate-800 glass-card max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+        className="relative  max-w-2xl w-full max-h-[90vh] overflow-hidden rounded-[2.5rem] border border-slate-200/50 bg-white/95 shadow-2xl backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/95"
       >
         {children}
       </motion.div>

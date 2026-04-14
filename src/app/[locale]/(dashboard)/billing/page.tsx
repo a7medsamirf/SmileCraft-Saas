@@ -37,9 +37,9 @@ export default async function BillingPage() {
           
         </section>
 
-        {/* Weekly Revenue Chart */}
+       {/* Weekly Revenue Chart */}
         <section className="animate-in slide-in-from-bottom-4 duration-1000">
-          <WeeklyRevenueChartServer />
+           <InvoiceHistoryTable />
         </section>
 
         <div className="grid gap-5 grid-cols-1 xl:grid-cols-2">
@@ -50,9 +50,14 @@ export default async function BillingPage() {
 
           {/* Detailed Invoices History */}
           <div className="">
-            <InvoiceHistoryTable />
+             <WeeklyRevenueChartServer />
+          
           </div>
         </div>
+
+
+
+
       </div>
     </PageTransition>
   );

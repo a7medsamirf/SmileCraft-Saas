@@ -248,20 +248,27 @@ export async function getPatientByIdAction(id: string): Promise<Patient | null> 
       deletedAt: null,
     };
 
-    // Filter by branch if user has one selected
-    if (branchId) {
-      where.branchId = branchId;
-    }
+    // Don't filter by branchId for direct patient lookup
+    // Patients should be accessible across branches within the same clinic
+    // if (branchId) {
+    //   where.branchId = branchId;
+    // }
+
+    console.log("[getPatientByIdAction] Searching for patient with where clause:", where);
 
     const patient = await prisma.patients.findFirst({
       where,
       include: { medical_histories: true },
     });
 
-    if (!patient) return null;
+    if (!patient) {
+      console.warn("[getPatientByIdAction] Patient not found with ID:", id, "clinicId:", clinicId);
+      return null;
+    }
 
     return mapRowToPatient(patient);
-  } catch {
+  } catch (err) {
+    console.error("[getPatientByIdAction] Error:", err);
     return null;
   }
 }

@@ -1,4 +1,4 @@
-export type StaffRole = "DOCTOR" | "ASSISTANT" | "RECEPTIONIST" | "ACCOUNTANT";
+export type StaffRole = "DOCTOR" | "ASSISTANT" | "RECEPTIONIST" | "ADMIN";
 
 export type LeaveType = "ANNUAL" | "SICK" | "EMERGENCY" | "UNPAID";
 

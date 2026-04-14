@@ -12,6 +12,7 @@ import {
   Clock,
   CheckCircle,
   XCircle,
+  Calendar,
   AlertCircle,
   User,
   FileText,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { LeaveRequest, LeaveType, StaffMember } from "../types";
 import {
   getLeaveRequestsAction,
@@ -228,22 +230,24 @@ export function LeaveManagement({ staffId, staff }: LeaveManagementProps) {
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                 {t("startDate")}
               </label>
-              <input
+              <Input
                 type="date"
                 value={startDate}
+                icon={<Calendar className="h-4 w-4" />}
                 onChange={(e) => setStartDate(e.target.value)}
-                className={inputCls}
+                className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:bg-slate-900"
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                 {t("endDate")}
               </label>
-              <input
+              <Input
                 type="date"
                 value={endDate}
+                icon={<Calendar className="h-4 w-4" />}
                 onChange={(e) => setEndDate(e.target.value)}
-                className={inputCls}
+                className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:bg-slate-900"
               />
             </div>
             <div>

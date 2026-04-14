@@ -13,7 +13,7 @@ import { StaffMember, StaffRole } from "../types";
 
 const staffSchema = z.object({
   fullName: z.string().min(2, "nameRequired"),
-  role: z.enum(["DOCTOR", "ASSISTANT", "RECEPTIONIST", "ACCOUNTANT"]),
+  role: z.enum(["DOCTOR", "ASSISTANT", "RECEPTIONIST", "ADMIN"]),
   specialty: z.string().optional(),
   email: z.string().email("invalidEmail"),
   phone: z.string().min(10, "invalidPhone"),
@@ -179,7 +179,7 @@ export function StaffForm({ initialData, onSubmit, onCancel }: StaffFormProps) {
               <option value="DOCTOR">{t("roles.doctor")}</option>
               <option value="ASSISTANT">{t("roles.assistant")}</option>
               <option value="RECEPTIONIST">{t("roles.receptionist")}</option>
-              <option value="ACCOUNTANT">{t("roles.accountant")}</option>
+              <option value="ADMIN">{t("roles.admin")}</option>
             </select>
           </div>
 
