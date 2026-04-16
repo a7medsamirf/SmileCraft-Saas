@@ -79,6 +79,16 @@ CREATE TABLE "audit_logs" (
 );
 
 -- CreateTable
+CREATE TABLE "branch_business_hours" (
+    "id" TEXT NOT NULL DEFAULT (gen_random_uuid())::text,
+    "hours" JSONB NOT NULL DEFAULT '[]',
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "branchId" TEXT NOT NULL,
+
+    CONSTRAINT "branch_business_hours_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "clinic_branches" (
     "id" TEXT NOT NULL DEFAULT (gen_random_uuid())::text,
     "clinicId" TEXT NOT NULL,
@@ -92,16 +102,6 @@ CREATE TABLE "clinic_branches" (
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "clinic_branches_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "clinic_business_hours" (
-    "id" TEXT NOT NULL DEFAULT (gen_random_uuid())::text,
-    "clinicId" TEXT NOT NULL,
-    "hours" JSONB NOT NULL DEFAULT '[]',
-    "updatedAt" TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "clinic_business_hours_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -455,6 +455,9 @@ CREATE INDEX "appointments_patientId_idx" ON "appointments"("patientId");
 CREATE INDEX "appointments_userId_idx" ON "appointments"("userId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "branch_business_hours_branchId_key" ON "branch_business_hours"("branchId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "clinic_branches_code_key" ON "clinic_branches"("code");
 
 -- CreateIndex
@@ -462,9 +465,6 @@ CREATE INDEX "clinic_branches_clinicId_idx" ON "clinic_branches"("clinicId");
 
 -- CreateIndex
 CREATE INDEX "clinic_branches_code_idx" ON "clinic_branches"("code");
-
--- CreateIndex
-CREATE UNIQUE INDEX "clinic_business_hours_clinicId_key" ON "clinic_business_hours"("clinicId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "clinic_notification_settings_clinicId_key" ON "clinic_notification_settings"("clinicId");
@@ -605,10 +605,10 @@ ALTER TABLE "audit_logs" ADD CONSTRAINT "audit_logs_clinicId_fkey" FOREIGN KEY (
 ALTER TABLE "audit_logs" ADD CONSTRAINT "audit_logs_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "clinic_branches" ADD CONSTRAINT "clinic_branches_clinicId_fkey" FOREIGN KEY ("clinicId") REFERENCES "Clinic"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "branch_business_hours" ADD CONSTRAINT "branch_business_hours_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "clinic_branches"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "clinic_business_hours" ADD CONSTRAINT "clinic_business_hours_clinicId_fkey" FOREIGN KEY ("clinicId") REFERENCES "Clinic"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE "clinic_branches" ADD CONSTRAINT "clinic_branches_clinicId_fkey" FOREIGN KEY ("clinicId") REFERENCES "Clinic"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "clinic_notification_settings" ADD CONSTRAINT "clinic_notification_settings_clinicId_fkey" FOREIGN KEY ("clinicId") REFERENCES "Clinic"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
@@ -708,3 +708,28 @@ ALTER TABLE "users" ADD CONSTRAINT "users_branchId_fkey" FOREIGN KEY ("branchId"
 
 -- AddForeignKey
 ALTER TABLE "users" ADD CONSTRAINT "users_clinicId_fkey" FOREIGN KEY ("clinicId") REFERENCES "Clinic"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+
+-- 1. التأكد من إنشاء القناة الخاصة بالبث اللحظي
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+        CREATE PUBLICATION supabase_realtime;
+    END IF;
+END $$;
+
+-- 2. إضافة الجداول الأساسية لـ SmileCraft CMS
+-- المواعيد والانتظار
+ALTER PUBLICATION supabase_realtime ADD TABLE appointments;
+-- المرضى (عشان لو حد عدل بيانات مريض تسمع عند الكل)
+ALTER PUBLICATION supabase_realtime ADD TABLE patients;
+-- التنبيهات (دي أهم حاجة عشان الـ Popup يظهر للمستخدم فوراً)
+ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
+-- المخزن وحركات الأصناف
+ALTER PUBLICATION supabase_realtime ADD TABLE inventory_items;
+ALTER PUBLICATION supabase_realtime ADD TABLE inventory_transactions;
+-- مواعيد عمل الفروع الجديدة
+ALTER PUBLICATION supabase_realtime ADD TABLE branch_business_hours;
+
+-- 3. (اختياري) لو عايز تفعل الـ Realtime لكل الجداول المستقبلية أوتوماتيكياً:
+ALTER PUBLICATION supabase_realtime ADD ALL TABLES IN SCHEMA public;

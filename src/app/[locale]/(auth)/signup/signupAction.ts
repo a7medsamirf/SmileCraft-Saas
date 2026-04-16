@@ -117,6 +117,18 @@ export async function signupAction(
         },
       };
     }
+    // ── 5xx errors from Supabase auth servers ────────────────────────
+    const status = (authError as { status?: number }).status;
+    if (status && status >= 500) {
+      console.error("[signupAction] Supabase auth server error:", status, authError);
+      return {
+        errors: {
+          form: [
+            "خدمة التأكيد غير متاحة حالياً (خطأ ٥٠٢). يرجى المحاولة بعد دقائق.",
+          ],
+        },
+      };
+    }
     // ── Weak password ─────────────────────────────────────────────────
     if (msg.includes("weak") || msg.includes("password should be")) {
       return {

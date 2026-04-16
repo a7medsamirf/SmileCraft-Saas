@@ -214,8 +214,8 @@ export function InventoryList({ items, isLoading, onEdit, onAdd, onDelete }: Inv
         </div>
       </div>
 
-      <div className="overflow-hidden glass-card transition-all duration-300">
-        <table className="w-full text-left rtl:text-right">
+      <div className="overflow-x-auto transition-all duration-300">
+        <table className="w-full min-w-215">
           <thead className="bg-slate-50/50 text-xs font-semibold uppercase text-slate-500 dark:bg-slate-800/50">
             <tr>
               <th className="px-6 py-4">{t("name")}</th>
