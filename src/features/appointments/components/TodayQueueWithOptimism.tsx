@@ -113,7 +113,7 @@ export function TodayQueueWithOptimism({
         // Status change notifications with icons and colors
         const statusNotifications: Record<AppointmentStatus, { message: string; icon: string; type: "success" | "error" | "info" }> = {
           SCHEDULED: {
-            message: t("notificationScheduled", { defaultValue: `تم جدولة موعد جديد لـ ${patientName}` }),
+            message: t("notificationScheduled", { name: patientName, defaultValue: `تم جدولة موعد جديد لـ ${patientName}` }),
             icon: "📅",
             type: "info",
           },
