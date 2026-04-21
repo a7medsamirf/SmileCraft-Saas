@@ -7,34 +7,15 @@ import { useLocale, useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { motion, AnimatePresence } from "framer-motion";
 import { useFormStatus } from "react-dom";
-import {
-  LayoutDashboard,
-  Users,
-  Calendar,
-  Wallet,
-  Settings,
-  Menu,
-  X,
-  Dna,
-  Sun,
-  Moon,
-  Languages,
-  Stethoscope,
-  LogOut,
-  UserCheck,
-  Loader2,
-  CalendarCheck,
-  User,
-  Package,
-  Sparkles,
-  GitBranch,
-} from "lucide-react";
+import { GitBranch, Package, Sparkles, User, UserCheck, CalendarCheck, Stethoscope, LogOut, Loader2, Moon, Sun, Languages, Dna, X, Menu, Settings, Wallet, Calendar, Users, LayoutDashboard, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logoutAction } from "@/app/[locale]/(auth)/logoutAction";
 import { Logo } from "@/components/SharesComponent/Logo";
 import { BranchSwitcher } from "@/components/BranchSwitcher";
 import { getBranchesAction, switchBranchAction, createBranchAction } from "@/features/branches/serverActions";
 import { getSidebarProfileAction } from "@/features/profile/actions";
+import { usePermissions } from "@/features/staff/hooks/usePermissions";
+import { PermissionKey } from "@/features/staff/types";
 
 function LogoutButton() {
   const t = useTranslations("Sidebar");
@@ -60,6 +41,7 @@ export function Sidebar({
   userName,
   userSpecialty,
   userRole,
+  userPermissions,
   clinicName,
   clinicLogo,
   logoUrlDark,
@@ -68,6 +50,7 @@ export function Sidebar({
   userName?: string | null;
   userSpecialty?: string | null;
   userRole?: string | null;
+  userPermissions?: Record<string, any> | null;
   clinicName?: string;
   clinicLogo?: string;
   logoUrlDark?: string;
@@ -76,23 +59,25 @@ export function Sidebar({
 
 ) {
   const t = useTranslations("Sidebar");
+  const { checkPermission, isSuperAdmin } = usePermissions(userRole, userPermissions);
 
   // Debug: Log role data from database
-  console.log("[Sidebar] Props received:", { userRole, userSpecialty });
+  console.log("[Sidebar] Props received:", { userRole, userSpecialty, hasPermissions: !!userPermissions });
 
-  const NAV_LINKS = [
-    { name: t("dashboard"), href: "/dashboard", icon: LayoutDashboard },
-    { name: t("patients"), href: "/patients", icon: Users },
-    { name: t("appointments"), href: "/appointments", icon: CalendarCheck },
-    { name: t("calendar"), href: "/calendar", icon: Calendar },
-    { name: t("clinical"), href: "/clinical", icon: Stethoscope },
-    { name: t("smartAssistant"), href: "/assistant", icon: Sparkles },
-    { name: t("staff"), href: "/staff", icon: UserCheck },
-    { name: t("inventory"), href: "/inventory", icon: Package },
-    { name: t("finance"), href: "/billing", icon: Wallet },
-    { name: t("branches"), href: "/branches", icon: GitBranch },
-    { name: t("settings"), href: "/settings", icon: Settings },
-  ] as const;
+  const NAV_LINKS: Array<{ name: string; href: `/dashboard` | `/patients` | `/appointments` | `/calendar` | `/clinical` | `/assistant` | `/staff` | `/inventory` | `/billing` | `/branches` | `/schedule` | `/settings`; icon: React.ComponentType<{ className?: string }>; permission: PermissionKey }> = [
+    { name: t("dashboard"), href: "/dashboard", icon: LayoutDashboard, permission: "view_dashboard" as PermissionKey },
+    { name: t("patients"), href: "/patients", icon: Users, permission: "view_patients" as PermissionKey },
+    { name: t("appointments"), href: "/appointments", icon: CalendarCheck, permission: "view_appointments" as PermissionKey },
+    { name: t("calendar"), href: "/calendar", icon: Calendar, permission: "view_calendar" as PermissionKey },
+    { name: t("clinical"), href: "/clinical", icon: Stethoscope, permission: "view_clinical" as PermissionKey },
+    { name: t("smartAssistant"), href: "/assistant", icon: Sparkles, permission: "view_assistant" as PermissionKey },
+    { name: t("staff"), href: "/staff", icon: UserCheck, permission: "view_staff" as PermissionKey },
+    { name: t("inventory"), href: "/inventory", icon: Package, permission: "view_inventory" as PermissionKey },
+    { name: t("finance"), href: "/billing", icon: Wallet, permission: "view_finance" as PermissionKey },
+    { name: t("branches"), href: "/branches", icon: GitBranch, permission: "view_branches" as PermissionKey },
+    /* { name: t("schedule"), href: "/schedule", icon: Clock, permission: "view_schedule" as PermissionKey }, */
+    { name: t("settings"), href: "/settings", icon: Settings, permission: "view_settings" as PermissionKey },
+  ];
 
   const pathname = usePathname();
   const router = useRouter();
@@ -208,7 +193,7 @@ export function Sidebar({
       {/* Main Sidebar (Desktop fixed, Mobile animated) */}
       <motion.aside
         className={cn(
-          "fixed overflow-x-scroll inset-y-0 z-50 flex w-72 flex-col justify-between border-slate-200 glass md:sticky md:top-0 md:h-screen transition-all duration-300 ease-in-out md:translate-x-0",
+          "fixed overflow-x-auto inset-y-0 z-50 flex w-72 flex-col justify-between border-slate-200 glass md:sticky md:top-0 md:h-screen transition-all duration-300 ease-in-out md:translate-x-0",
           direction === "rtl" ? "right-0 border-l" : "left-0 border-r",
           isOpen
             ? "translate-x-0"
@@ -250,7 +235,7 @@ export function Sidebar({
           </div>
 
           <div className="flex w-full flex-col gap-2 px-3 py-4">
-            {NAV_LINKS.map((link) => {
+            {NAV_LINKS.filter(link => !link.permission || checkPermission(link.permission)).map((link) => {
               const isActive =
                 pathname === link.href || pathname.startsWith(`${link.href}/`);
               return (
@@ -299,6 +284,7 @@ export function Sidebar({
               currentBranchId={resolvedBranchId || null}
               onSwitch={handleSwitchBranch}
               onCreateBranch={handleCreateBranch}
+              isAdmin={userRole === "ADMIN"}
             />
           )}
 

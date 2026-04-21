@@ -29,14 +29,17 @@ model Clinic {
   inventory_alerts             inventory_alerts[]
   inventory_items              inventory_items[]
   inventory_transactions       inventory_transactions[]
-  leave_requests               leave_requests[]
-  patients                     patients[]
-  payroll_records              payroll_records[]
-  services                     services[]
-  staff                        staff[]
-  staff_schedules              staff_schedules[]
-  users                        users[]
-}
+  leave_requests   leave_requests[]
+  patients         patients[]
+  payroll_records  payroll_records[]
+  services         services[]
+  staff            staff[]
+  staff_schedules  staff_schedules[]
+  users            users[]
+  invoices         invoices[]
+  payments         payments[]
+  }
+
 
 model appointments {
   id              String            @id
@@ -105,6 +108,9 @@ model clinic_branches {
   inventory_items       inventory_items[]
   patients              patients[]
   users                 users[]
+  staff                 staff[]
+  invoices              invoices[]
+  payments              payments[]
 
   @@index([clinicId])
   @@index([code])
@@ -221,6 +227,8 @@ model invoices {
   id            String          @id
   invoiceNumber String          @unique
   patientId     String
+  clinicId      String
+  branchId      String?
   totalAmount   Decimal         @default(0) @db.Decimal(10, 2)
   paidAmount    Decimal         @default(0) @db.Decimal(10, 2)
   status        InvoiceStatus   @default(DRAFT)
@@ -229,8 +237,12 @@ model invoices {
   createdAt     DateTime        @default(now())
   updatedAt     DateTime
   invoice_items invoice_items[]
+  clinic_branches clinic_branches? @relation(fields: [branchId], references: [id])
+  Clinic          Clinic           @relation(fields: [clinicId], references: [id])
   patients      patients        @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
+  @@index([branchId])
+  @@index([clinicId])
   @@index([invoiceNumber])
   @@index([patientId])
 }
@@ -338,6 +350,8 @@ model payments {
   id        String        @id
   patientId String
   userId    String?
+  clinicId  String
+  branchId  String?
   amount    Decimal       @db.Decimal(10, 2)
   method    PaymentMethod @default(CASH)
   type      PaymentType   @default(PAYMENT)
@@ -345,9 +359,13 @@ model payments {
   reference String?
   createdAt DateTime      @default(now())
   updatedAt DateTime
+  clinic_branches clinic_branches? @relation(fields: [branchId], references: [id])
+  Clinic          Clinic           @relation(fields: [clinicId], references: [id])
   patients  patients      @relation(fields: [patientId], references: [id], onDelete: Cascade)
   users     users?        @relation(fields: [userId], references: [id])
 
+  @@index([branchId])
+  @@index([clinicId])
   @@index([createdAt])
   @@index([patientId])
   @@index([userId])
@@ -378,19 +396,20 @@ model payroll_records {
 }
 
 model services {
-  id          String   @id
-  name        String
-  nameAr      String?
-  code        String   @unique
-  category    String
-  price       Decimal  @db.Decimal(10, 2)
-  duration    Int?
-  description String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime
-  clinicId    String
-  Clinic      Clinic   @relation(fields: [clinicId], references: [id])
+  id           String   @id
+  name         String
+  nameAr       String?
+  code         String   @unique
+  category     String
+  price        Decimal  @db.Decimal(10, 2)
+  duration     Int?
+  procedureType String?
+  description  String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime
+  clinicId     String
+  Clinic       Clinic   @relation(fields: [clinicId], references: [id])
 
   @@index([category])
 }
@@ -411,16 +430,19 @@ model staff {
   createdAt       DateTime          @default(now())
   updatedAt       DateTime
   clinicId        String
+  branchId        String?
   role            String            @default("ASSISTANT")
   permissions     Json?             @default("{}")
   appointments    appointments[]
   leave_requests  leave_requests[]
   payroll_records payroll_records[]
+  clinic_branches clinic_branches?  @relation(fields: [branchId], references: [id])
   Clinic          Clinic            @relation(fields: [clinicId], references: [id])
   users           users?            @relation(fields: [userId], references: [id])
   staff_schedules staff_schedules[]
   treatments      treatments[]
 
+  @@index([branchId])
   @@index([employeeCode])
 }
 

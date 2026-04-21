@@ -121,6 +121,36 @@ export async function resolveUserContext(): Promise<{ clinicId: string; branchId
 }
 
 /**
+ * Returns clinicId, branchId, and role for the authenticated user.
+ * This is the ultimate multi-tenant and access control guard.
+ */
+export async function resolveAuthContext(): Promise<{ 
+  clinicId: string | null; 
+  branchId: string | null; 
+  role: string | null; 
+}> {
+  const user = await getAuthenticatedUser();
+  if (!user) return { clinicId: null, branchId: null, role: null };
+
+  try {
+    const prisma = (await import("@/lib/prisma")).default;
+    const dbUser = await prisma.users.findUnique({
+      where: { id: user.id },
+      select: { clinicId: true, branchId: true, role: true },
+    });
+
+    return {
+      clinicId: dbUser?.clinicId ?? null,
+      branchId: dbUser?.branchId ?? null,
+      role: dbUser?.role ?? null,
+    };
+  } catch (error) {
+    console.error("[resolveAuthContext] Error:", error);
+    return { clinicId: null, branchId: null, role: null };
+  }
+}
+
+/**
  * Returns the authenticated user's role from the users table.
  */
 export async function resolveUserRole(): Promise<string | null> {
@@ -162,6 +192,27 @@ export async function resolveUserFullName(): Promise<string | null> {
   });
 
   return dbUser?.fullName ?? null;
+}
+
+/**
+ * Returns the authenticated user's permissions from the staff table.
+ */
+export async function resolveUserPermissions(): Promise<Record<string, any> | null> {
+  const user = await getAuthenticatedUser();
+  if (!user) return null;
+
+  try {
+    const prisma = (await import("@/lib/prisma")).default;
+    const staff = await prisma.staff.findUnique({
+      where: { userId: user.id },
+      select: { permissions: true },
+    });
+
+    return (staff?.permissions as Record<string, any>) ?? null;
+  } catch (error) {
+    console.error("[resolveUserPermissions] Error:", error);
+    return null;
+  }
 }
 
 /**

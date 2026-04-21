@@ -153,6 +153,7 @@ export function BookingForm({
   const [selectedService, setSelectedService] = useState<DentalService | null>(null);
   const [clinicHours, setClinicHours] = useState<BusinessDay[]>([]);
   const [slotDuration, setSlotDuration] = useState<number>(30);
+  const [selectedDuration, setSelectedDuration] = useState<string>("30");
   const [isLoadingHours, setIsLoadingHours] = useState(false);
   const [availableTimeSlots, setAvailableTimeSlots] = useState<string[]>([]);
 
@@ -187,6 +188,7 @@ export function BookingForm({
         if (isMounted) {
           setClinicHours(hours);
           setSlotDuration(duration);
+          setSelectedDuration(duration.toString());
         }
       } catch {
         if (isMounted) {
@@ -212,6 +214,9 @@ export function BookingForm({
       if (matchingProc) {
         setSelectedProcedure(matchingProc);
       }
+      // Auto-set duration from service
+      setSelectedDuration(selectedService.duration.toString());
+      setSlotDuration(selectedService.duration);
     }
   }, [selectedService]);
 
@@ -476,7 +481,9 @@ export function BookingForm({
                 error={state.errors?.date?.[0]}
                 disabled={isPending}
               />
-              <div>
+      
+
+            <div>
                 <label className="block text-[12px] font-bold text-slate-500 dark:text-slate-400 mb-2">
                   المدة
                 </label>
@@ -486,6 +493,11 @@ export function BookingForm({
                   </div>
                   <select
                     name="duration"
+                    value={selectedDuration}
+                    onChange={(e) => {
+                      setSelectedDuration(e.target.value);
+                      setSlotDuration(Number(e.target.value));
+                    }}
                     disabled={isPending}
                     className={cn(
                       inputCls(state.errors?.duration?.[0]),
@@ -505,17 +517,17 @@ export function BookingForm({
                     {state.errors.duration[0]}
                   </p>
                 )}
-              </div>
+              </div> 
             </div>
 
-            {/* ── 3. Tooth Number ── */}
+      {/* ── 3. Tooth Number ── */}
             <div>
               <label className="flex items-center gap-1.5 text-[12px] font-bold text-slate-500 dark:text-slate-400 mb-2">
                 <Hash className="w-3.5 h-3.5" />
                 رقم السن (اختياري — ١ إلى ٣٢)
               </label>
               <div className="flex items-center gap-3 flex-wrap">
-                <div className="relative w-32">
+                <div className="relative w-full">
                   <input
                     type="number"
                     name="toothNumber"
@@ -527,7 +539,7 @@ export function BookingForm({
                     disabled={isPending}
                     className={cn(
                       inputCls(),
-                      "text-center font-bold text-lg",
+                      "font-bold text-lg py-2",
                       isValidTooth && "border-blue-400 focus:border-blue-500",
                     )}
                   />
@@ -568,7 +580,6 @@ export function BookingForm({
                 )}
               </div>
             </div>
-
             {/* ── 4. Procedure Type — Visual Chip Picker ── */}
             <div>
               {/* Hidden inputs for form submission */}

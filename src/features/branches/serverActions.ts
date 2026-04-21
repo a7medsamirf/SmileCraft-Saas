@@ -244,7 +244,7 @@ export async function switchBranchAction(branchId: string): Promise<{ success: b
 
   const dbUser = await prisma.users.findUnique({
     where: { id: user.id },
-    select: { clinicId: true },
+    select: { clinicId: true, role: true },
   });
 
   if (!dbUser?.clinicId) {
@@ -252,6 +252,21 @@ export async function switchBranchAction(branchId: string): Promise<{ success: b
   }
 
   const clinicId = dbUser.clinicId;
+
+  // Special case: "all" branches for ADMIN
+  if (branchId === "all") {
+    if (dbUser.role !== "ADMIN") {
+      throw new Error("غير مصرح: خيار 'جميع الفروع' متاح للمسؤول فقط");
+    }
+
+    await prisma.users.update({
+      where: { id: user.id },
+      data: { branchId: null },
+    });
+
+    revalidatePath("/");
+    return { success: true };
+  }
 
   // Verify the branch belongs to the user's clinic and is active
   const branch = await prisma.clinic_branches.findFirst({

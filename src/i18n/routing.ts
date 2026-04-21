@@ -4,13 +4,14 @@ import { defineRouting } from "next-intl/routing";
 export const routing = defineRouting({
   // A list of all locales that are supported
   locales: ['en', 'ar'],
- 
+
   // Used when no locale matches
   defaultLocale: 'ar',
 
   pathnames: {
     "/": { en: '/', ar: '/', },
     // CMS Routes
+    "/dashboard": { en: '/dashboard', ar: '/dashboard' },
     "/patients": { en: '/patients', ar: '/patients' },
     "/calendar": { en: '/calendar', ar: '/calendar' },
     "/billing": { en: '/billing', ar: '/billing' },
@@ -21,7 +22,6 @@ export const routing = defineRouting({
     "/appointments/queue": { en: "/appointments/queue", ar: "/appointments/queue" },
     "/finance": { en: '/finance', ar: '/finance' },
     "/inventory": { en: '/inventory', ar: '/inventory' },
-    "/dashboard": { en: '/dashboard', ar: '/dashboard' },
     "/assistant": { en: '/assistant', ar: '/assistant' },
     "/patients/[id]": { en: '/patients/[id]', ar: '/patients/[id]' },
     "/login": { en: '/login', ar: '/login' },
@@ -31,8 +31,9 @@ export const routing = defineRouting({
     "/patients/view/[id]": { en: '/patients/view/[id]', ar: '/patients/view/[id]' },
     "/profile": { en: '/profile', ar: '/profile' },
     "/branches": { en: '/branches', ar: '/branches' },
-
- },
+    "/schedule": { en: '/schedule', ar: '/schedule' },
+    "/logout": { en: '/logout', ar: '/logout' },
+  },
 
 });
  

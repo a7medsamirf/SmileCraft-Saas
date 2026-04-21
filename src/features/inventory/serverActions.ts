@@ -14,26 +14,44 @@ import {
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { auditCreate, auditUpdate, auditDelete } from "@/lib/audit";
 
-async function getClinicAndBranchId(): Promise<{ clinicId: string; branchId: string | null }> {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
-  
-  const dbUser = await prisma.users.findUnique({
-    where: { id: user.id },
-    select: { clinicId: true, branchId: true },
-  });
-  
-  if (!dbUser) throw new Error("User record not found");
-  return { clinicId: dbUser.clinicId, branchId: dbUser.branchId };
+/**
+ * Auth helper — returns clinicId, branchId and role (never throws)
+ */
+async function getAuthContext(): Promise<{ 
+  clinicId: string | null; 
+  branchId: string | null; 
+  role: string | null;
+}> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { clinicId: null, branchId: null, role: null };
+
+    const dbUser = await prisma.users.findUnique({
+      where: { id: user.id },
+      select: { clinicId: true, branchId: true, role: true },
+    });
+
+    return {
+      clinicId: dbUser?.clinicId ?? null,
+      branchId: dbUser?.branchId ?? null,
+      role: dbUser?.role ?? null,
+    };
+  } catch {
+    return { clinicId: null, branchId: null, role: null };
+  }
 }
 
 export async function getInventoryItemsAction() {
-  const { clinicId, branchId } = await getClinicAndBranchId();
+  const { clinicId, branchId, role } = await getAuthContext();
+  if (!clinicId) return [];
 
   const where: any = { clinicId };
-  // Apply branch isolation
-  if (branchId) {
+  
+  // Apply branch isolation for non-admins
+  if (role !== "ADMIN" && branchId) {
     where.branchId = branchId;
   }
 
@@ -58,7 +76,8 @@ export async function getInventoryItemsAction() {
 }
 
 export async function createInventoryItemAction(payload: Omit<InventoryItem, "id">) {
-  const { clinicId, branchId } = await getClinicAndBranchId();
+  const { clinicId, branchId } = await getAuthContext();
+  if (!clinicId) throw new Error("Unauthorized");
 
   // Check rate limit (20 creates per minute)
   const rateLimit = await checkRateLimit("createInventory", RATE_LIMITS.MUTATION_CREATE);
@@ -101,7 +120,8 @@ export async function createInventoryItemAction(payload: Omit<InventoryItem, "id
 }
 
 export async function updateInventoryQuantityAction(id: string, newQuantity: number) {
-  const { clinicId, branchId } = await getClinicAndBranchId();
+  const { clinicId, branchId, role } = await getAuthContext();
+  if (!clinicId) throw new Error("Unauthorized");
 
   // Check rate limit (50 updates per minute)
   const rateLimit = await checkRateLimit("updateInventory", RATE_LIMITS.MUTATION_UPDATE);
@@ -110,8 +130,8 @@ export async function updateInventoryQuantityAction(id: string, newQuantity: num
   }
 
   const where: any = { id, clinicId };
-  // Verify branch ownership if user has a branch
-  if (branchId) {
+  // Verify branch ownership if user has a branch AND is not ADMIN
+  if (role !== "ADMIN" && branchId) {
     where.branchId = branchId;
   }
 
@@ -137,7 +157,8 @@ export async function deleteInventoryItemAction(id: string) {
     throw new Error(validated.error.message);
   }
 
-  const { clinicId, branchId } = await getClinicAndBranchId();
+  const { clinicId, branchId, role } = await getAuthContext();
+  if (!clinicId) throw new Error("Unauthorized");
 
   // Check rate limit (10 deletes per minute)
   const rateLimit = await checkRateLimit("deleteInventory", RATE_LIMITS.MUTATION_DELETE);
@@ -146,7 +167,7 @@ export async function deleteInventoryItemAction(id: string) {
   }
 
   const where: any = { id: validated.data.id, clinicId };
-  if (branchId) {
+  if (role !== "ADMIN" && branchId) {
     where.branchId = branchId;
   }
 
@@ -166,11 +187,12 @@ export async function updateInventoryItemAction(payload: Omit<InventoryItem, "id
     throw new Error(validated.error.message);
   }
 
-  const { clinicId, branchId } = await getClinicAndBranchId();
-  const data = validated.data;
+  const { clinicId, branchId, role } = await getAuthContext();
+  if (!clinicId) throw new Error("Unauthorized");
 
+  const data = validated.data;
   const where: any = { id: data.id, clinicId };
-  if (branchId) {
+  if (role !== "ADMIN" && branchId) {
     where.branchId = branchId;
   }
 
@@ -195,19 +217,17 @@ export async function updateInventoryItemAction(payload: Omit<InventoryItem, "id
   return item;
 }
 
-// ---------------------------------------------------------------------------
-// getLowStockItemsAction - Fetch items at or below minimum stock threshold
-// ---------------------------------------------------------------------------
 export async function getLowStockItemsAction() {
-  const { clinicId, branchId } = await getClinicAndBranchId();
+  const { clinicId, branchId, role } = await getAuthContext();
+  if (!clinicId) return [];
 
   const where: any = { 
     clinicId,
     isActive: true,
   };
   
-  // Apply branch isolation
-  if (branchId) {
+  // Apply branch isolation for non-admins
+  if (role !== "ADMIN" && branchId) {
     where.branchId = branchId;
   }
 

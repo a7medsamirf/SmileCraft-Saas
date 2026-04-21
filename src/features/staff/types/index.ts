@@ -2,13 +2,40 @@ export type StaffRole = "DOCTOR" | "ASSISTANT" | "RECEPTIONIST" | "ADMIN";
 
 export type LeaveType = "ANNUAL" | "SICK" | "EMERGENCY" | "UNPAID";
 
-export type PermissionKey = "view_patients" | "edit_records" | "view_revenue" | "delete_data";
+export type PermissionKey = 
+  | "view_patients" 
+  | "edit_records" 
+  | "view_revenue" 
+  | "delete_data"
+  | "view_dashboard"
+  | "view_clinical"
+  | "view_assistant"
+  | "view_calendar"
+  | "view_appointments"
+  | "view_staff"
+  | "view_inventory"
+  | "view_finance"
+  | "view_branches"
+  | "view_settings"
+  | "view_schedule";
 
 export interface StaffPermissions {
   view_patients?: boolean;
   edit_records?: boolean;
   view_revenue?: boolean;
   delete_data?: boolean;
+  // Page visibility
+  view_dashboard?: boolean;
+  view_clinical?: boolean;
+  view_assistant?: boolean;
+  view_calendar?: boolean;
+  view_appointments?: boolean;
+  view_staff?: boolean;
+  view_inventory?: boolean;
+  view_finance?: boolean;
+  view_branches?: boolean;
+  view_settings?: boolean;
+  view_schedule?: boolean;
 }
 
 export interface StaffMember {
@@ -22,6 +49,7 @@ export interface StaffMember {
   joinDate: string;
   salary: number;
   isActive: boolean;
+  branchId?: string;
   avatarUrl?: string;
   permissions?: StaffPermissions;
   createLoginAccount?: boolean;

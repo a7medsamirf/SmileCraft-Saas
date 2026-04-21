@@ -18,27 +18,32 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { auditCreate, auditUpdate, auditDelete } from "@/lib/audit";
 
 /**
- * Auth helper — returns clinicId and branchId or null (never throws)
+ * Auth helper — returns clinicId, branchId and role (never throws)
  */
-async function getClinicAndBranchId(): Promise<{ clinicId: string | null; branchId: string | null }> {
+async function getAuthContext(): Promise<{ 
+  clinicId: string | null; 
+  branchId: string | null; 
+  role: string | null;
+}> {
   try {
     const supabase = await createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) return { clinicId: null, branchId: null };
+    if (!user) return { clinicId: null, branchId: null, role: null };
 
     const dbUser = await prisma.users.findUnique({
       where: { id: user.id },
-      select: { clinicId: true, branchId: true },
+      select: { clinicId: true, branchId: true, role: true },
     });
 
     return {
       clinicId: dbUser?.clinicId ?? null,
       branchId: dbUser?.branchId ?? null,
+      role: dbUser?.role ?? null,
     };
   } catch {
-    return { clinicId: null, branchId: null };
+    return { clinicId: null, branchId: null, role: null };
   }
 }
 
@@ -113,22 +118,28 @@ export async function getAppointmentsByDateAction(
   date: Date,
 ): Promise<Appointment[]> {
   try {
-    const { clinicId } = await getClinicAndBranchId();
+    const { clinicId, branchId, role } = await getAuthContext();
     if (!clinicId) return [];
 
     // Create date range for the day using local timezone consistently
-    // Use the same approach as booking: new Date(year, month, day) for local time
     const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
     const endOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
 
-    const dbAppointments = await prisma.appointments.findMany({
-      where: {
-        clinicId,
-        date: {
-          gte: startOfDay,
-          lte: endOfDay,
-        },
+    const where: any = {
+      clinicId,
+      date: {
+        gte: startOfDay,
+        lte: endOfDay,
       },
+    };
+
+    // Filter by branch if user has a branch selected AND is not ADMIN
+    if (role !== "ADMIN" && branchId) {
+      where.branchId = branchId;
+    }
+
+    const dbAppointments = await prisma.appointments.findMany({
+      where,
       include: {
         patients: {
           select: { fullName: true },
@@ -156,7 +167,7 @@ export async function getAppointmentStatsAction(
   selectedDate: Date
 ): Promise<{ monthlyTotal: number; todayTotal: number }> {
   try {
-    const { clinicId } = await getClinicAndBranchId();
+    const { clinicId, branchId, role } = await getAuthContext();
     if (!clinicId) return { monthlyTotal: 0, todayTotal: 0 };
 
     // Use local timezone consistently
@@ -166,16 +177,21 @@ export async function getAppointmentStatsAction(
     const startOfDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 0, 0, 0, 0);
     const endOfDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 23, 59, 59, 999);
 
+    const where: any = { clinicId };
+    if (role !== "ADMIN" && branchId) {
+      where.branchId = branchId;
+    }
+
     const [monthlyTotal, todayTotal] = await Promise.all([
       prisma.appointments.count({
         where: {
-          clinicId,
+          ...where,
           date: { gte: startOfMonth, lte: endOfMonth },
         },
       }),
       prisma.appointments.count({
         where: {
-          clinicId,
+          ...where,
           date: { gte: startOfDay, lte: endOfDay },
         },
       }),
@@ -202,7 +218,7 @@ export async function createAppointmentActionDB(payload: {
     throw new Error(`Invalid appointment data: ${validation.error.flatten().formErrors.join(", ")}`);
   }
 
-  const { clinicId, branchId } = await getClinicAndBranchId();
+  const { clinicId, branchId } = await getAuthContext();
   if (!clinicId) throw new Error("Unauthorized: no clinic found for this user.");
 
   // Check rate limit (20 creates per minute)
@@ -225,7 +241,7 @@ export async function createAppointmentActionDB(payload: {
   const dbApt = await prisma.appointments.create({
     data: {
       clinicId,
-      branchId: branchId ?? null, // ✅ Fix: Assign to user's branch
+      branchId: branchId ?? null,
       patientId: payload.patientId,
       staffId: staffId,
       date: payload.date,
@@ -265,7 +281,7 @@ export async function updateAppointmentStatusAction(
     throw new Error(`Invalid status update data: ${validation.error.flatten().formErrors.join(", ")}`);
   }
 
-  const { clinicId } = await getClinicAndBranchId();
+  const { clinicId, branchId, role } = await getAuthContext();
   if (!clinicId) throw new Error("Unauthorized: no clinic found for this user.");
 
   // Check rate limit (50 updates per minute)
@@ -275,8 +291,13 @@ export async function updateAppointmentStatusAction(
   }
 
   // Verify ownership
+  const where: any = { id, clinicId };
+  if (role !== "ADMIN" && branchId) {
+    where.branchId = branchId;
+  }
+
   const existing = await prisma.appointments.findFirst({
-    where: { id, clinicId },
+    where,
   });
   if (!existing) throw new Error("Unauthorized or not found");
 
@@ -319,7 +340,7 @@ export async function deleteAppointmentAction(id: string): Promise<void> {
     throw new Error(`Invalid appointment ID: ${validation.error.flatten().formErrors.join(", ")}`);
   }
 
-  const { clinicId } = await getClinicAndBranchId();
+  const { clinicId, branchId, role } = await getAuthContext();
   if (!clinicId) throw new Error("Unauthorized: no clinic found for this user.");
 
   // Check rate limit (10 deletes per minute)
@@ -328,8 +349,13 @@ export async function deleteAppointmentAction(id: string): Promise<void> {
     throw new Error("Rate limit exceeded. Please try again later.");
   }
 
+  const where: any = { id, clinicId };
+  if (role !== "ADMIN" && branchId) {
+    where.branchId = branchId;
+  }
+
   const existing = await prisma.appointments.findFirst({
-    where: { id, clinicId },
+    where,
   });
   if (!existing) throw new Error("Unauthorized or not found");
 
@@ -348,18 +374,12 @@ export async function deleteAppointmentAction(id: string): Promise<void> {
   revalidatePath("/appointments/queue");
 }
 
-// ---------------------------------------------------------------------------
-// getPatientAppointmentsWithTeethAction
-// Returns all active (non-cancelled, non-no-show) appointments for a patient
-// that have a tooth number stored in the `reason` column.
-// Results are deduplicated per tooth — only the LATEST appointment per tooth.
-// Falls back to [] on any error (never throws).
-// ---------------------------------------------------------------------------
+/** Load all active appointments for a patient with tooth info */
 export async function getPatientAppointmentsWithTeethAction(
   patientId: string,
 ): Promise<AppointmentTooth[]> {
   try {
-    const { clinicId } = await getClinicAndBranchId();
+    const { clinicId } = await getAuthContext();
     if (!clinicId) return [];
 
     const dbApts = await prisma.appointments.findMany({
@@ -369,21 +389,18 @@ export async function getPatientAppointmentsWithTeethAction(
         reason: { not: null },
         status: { notIn: ["CANCELLED", "NO_SHOW"] },
       },
-      orderBy: { date: "desc" }, // newest first → dedup keeps the latest per tooth
+      orderBy: { date: "desc" },
     });
 
-    // Deduplicate: one entry per tooth number (keep the latest)
     const seen = new Set<number>();
 
     return dbApts.reduce<AppointmentTooth[]>((acc, apt) => {
-      const rawReason = (apt as Record<string, unknown>).reason as
-        | string
-        | null;
+      const rawReason = (apt as Record<string, unknown>).reason as string | null;
       if (!rawReason) return acc;
 
       const toothNumber = parseInt(rawReason, 10);
       if (isNaN(toothNumber) || toothNumber < 1 || toothNumber > 32) return acc;
-      if (seen.has(toothNumber)) return acc; // older duplicate — skip
+      if (seen.has(toothNumber)) return acc;
       seen.add(toothNumber);
 
       const procedureKey = apt.type ?? "";
@@ -392,10 +409,7 @@ export async function getPatientAppointmentsWithTeethAction(
         toothNumber,
         procedureKey,
         procedure: PROCEDURE_BY_KEY[procedureKey]?.labelAr || apt.type || "",
-        date:
-          apt.date instanceof Date
-            ? apt.date.toISOString().slice(0, 10)
-            : String(apt.date).slice(0, 10),
+        date: apt.date instanceof Date ? apt.date.toISOString().slice(0, 10) : String(apt.date).slice(0, 10),
         appointmentStatus: apt.status as AppointmentStatus,
       });
       return acc;

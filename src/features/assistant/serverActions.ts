@@ -152,7 +152,7 @@ export async function sendSmartMessageAction(
     const { clinicId, branchId, fullName: doctorName, role: userRole } = dbUser;
 
     // 3. Fetch live clinic summary for context
-    const clinicSummary = await fetchClinicContext(clinicId, branchId);
+    const clinicSummary = await fetchClinicContext(clinicId, branchId, userRole);
 
     // 4. Step 1: Ask Gemini to analyze the question
     const analysis = await analyzeQuestion(message, locale, clinicSummary);
@@ -189,6 +189,7 @@ export async function sendSmartMessageAction(
       analysisResult.intent,
       clinicId,
       branchId,
+      userRole
     );
 
     if (!queryResult.success) {
@@ -646,20 +647,24 @@ async function executeQueryIntent(
   intent: QueryIntent,
   clinicId: string,
   branchId: string | null,
+  userRole: string,
 ): Promise<QueryResult> {
   try {
     // Build base WHERE clause with tenant isolation
     const where: Record<string, unknown> = { clinicId };
 
-    // Tables that have branchId
+    // Tables that have branchId (isolation applied for non-admins)
     const branchScopedTables = [
       "patients",
       "appointments",
       "clinical_cases",
       "inventory_items",
+      "staff",
+      "invoices",
+      "payments"
     ];
 
-    if (branchId && branchScopedTables.includes(intent.table)) {
+    if (userRole !== "ADMIN" && branchId && branchScopedTables.includes(intent.table)) {
       where.branchId = branchId;
     }
 
@@ -885,6 +890,7 @@ async function executeQueryIntent(
 async function fetchClinicContext(
   clinicId: string,
   branchId: string | null,
+  userRole: string
 ): Promise<string> {
   try {
     const today = new Date();
@@ -892,7 +898,8 @@ async function fetchClinicContext(
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const branchFilter = branchId ? { branchId } : {};
+    // Apply branch filter only for non-admins
+    const branchFilter = (userRole !== "ADMIN" && branchId) ? { branchId } : {};
 
     // Run all queries in parallel
     const [
@@ -924,13 +931,13 @@ async function fetchClinicContext(
       // Pending/partial invoices count
       prisma.invoices.count({
         where: {
-          patients: { clinicId },
+          clinicId,
+          ...branchFilter,
           status: { in: ["DRAFT", "SENT", "PARTIAL", "OVERDUE"] },
         },
       }),
 
-      // Low stock items — find items where quantity is critically low (<=10 as safe threshold)
-      // Note: Cross-column comparison (quantity <= minStock) requires raw SQL; we use a safe threshold here
+      // Low stock items
       prisma.inventory_items.count({
         where: {
           clinicId,

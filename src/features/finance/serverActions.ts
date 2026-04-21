@@ -24,29 +24,50 @@ const invoiceFromCaseSchema = z.object({
   notes: z.string().max(1000).optional(),
 });
 
-async function getClinicId(): Promise<string | null> {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const dbUser = await prisma.users.findUnique({
-    where: { id: user.id },
-    select: { clinicId: true }
-  });
-  return dbUser?.clinicId ?? null;
+// ---------------------------------------------------------------------------
+// Auth helper — returns clinicId, branchId and role (never throws)
+// ---------------------------------------------------------------------------
+async function getAuthContext(): Promise<{ 
+  clinicId: string | null; 
+  branchId: string | null; 
+  role: string | null;
+}> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { clinicId: null, branchId: null, role: null };
+
+    const dbUser = await prisma.users.findUnique({
+      where: { id: user.id },
+      select: { clinicId: true, branchId: true, role: true },
+    });
+
+    return {
+      clinicId: dbUser?.clinicId ?? null,
+      branchId: dbUser?.branchId ?? null,
+      role: dbUser?.role ?? null,
+    };
+  } catch {
+    return { clinicId: null, branchId: null, role: null };
+  }
 }
 
 export async function getInvoicesAction(patientId?: string) {
-  const clinicId = await getClinicId();
+  const { clinicId, branchId, role } = await getAuthContext();
   if (!clinicId) return [];
 
-  const where: { patientId?: string; patients?: { clinicId: string } } = {};
+  const where: any = { clinicId };
   if (patientId) where.patientId = patientId;
   
-  // Ensure clinic scoping
-  where.patients = { clinicId };
+  // Filter by branch if user has a branch selected AND is not ADMIN
+  if (role !== "ADMIN" && branchId) {
+    where.branchId = branchId;
+  }
 
   const invoices = await prisma.invoices.findMany({
-    where: where as any,
+    where,
     include: {
       patients: {
         select: { fullName: true }
@@ -73,7 +94,7 @@ export async function createPaymentAction(payload: {
   method: PaymentMethod;
   notes?: string;
 }) {
-  const clinicId = await getClinicId();
+  const { clinicId, branchId, role } = await getAuthContext();
   if (!clinicId) throw new Error("Clinic not configured");
 
   // Check rate limit (20 creates per minute)
@@ -88,12 +109,14 @@ export async function createPaymentAction(payload: {
     throw new Error(`Invalid payment data: ${validation.error.flatten().formErrors.join(", ")}`);
   }
 
-  // 1. Verify invoice belongs to clinic
+  // 1. Verify invoice belongs to clinic and branch (if not admin)
+  const invoiceWhere: any = { id: payload.invoiceId, clinicId };
+  if (role !== "ADMIN" && branchId) {
+    invoiceWhere.branchId = branchId;
+  }
+
   const invoice = await prisma.invoices.findFirst({
-    where: {
-      id: payload.invoiceId,
-      patients: { clinicId }
-    }
+    where: invoiceWhere
   });
 
   if (!invoice) throw new Error("Invoice not found");
@@ -104,6 +127,8 @@ export async function createPaymentAction(payload: {
       data: {
         id: crypto.randomUUID(),
         patientId: invoice.patientId,
+        clinicId,
+        branchId: invoice.branchId, // Link to same branch as invoice
         amount: payload.amount,
         method: payload.method as PaymentMethod,
         type: PaymentType.PAYMENT,
@@ -153,7 +178,7 @@ export async function createPaymentAction(payload: {
 }
 
 export async function getFinanceStatsAction() {
-  const clinicId = await getClinicId();
+  const { clinicId, branchId, role } = await getAuthContext();
   if (!clinicId) {
     return {
       dailyRevenue: 0,
@@ -166,25 +191,32 @@ export async function getFinanceStatsAction() {
     };
   }
 
-  // Use local timezone consistently (same as appointment booking fix)
+  // Use local timezone consistently
   const now = new Date();
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+
+  const wherePayments: any = { clinicId, type: "PAYMENT" };
+  const whereInvoices: any = { clinicId };
+
+  if (role !== "ADMIN" && branchId) {
+    wherePayments.branchId = branchId;
+    whereInvoices.branchId = branchId;
+  }
 
   const [dailyRevenue, totalOutstanding, monthlyStats] = await Promise.all([
     // Daily revenue: payments created today
     prisma.payments.aggregate({
       where: {
-        patients: { clinicId },
+        ...wherePayments,
         createdAt: { gte: startOfDay },
-        type: "PAYMENT"
       },
       _sum: { amount: true }
     }),
     // Outstanding: unpaid invoices
     prisma.invoices.aggregate({
       where: {
-        patients: { clinicId },
+        ...whereInvoices,
         status: { notIn: ["PAID", "CANCELLED"] }
       },
       _sum: {
@@ -195,7 +227,7 @@ export async function getFinanceStatsAction() {
     // Monthly stats
     prisma.invoices.aggregate({
       where: {
-        patients: { clinicId },
+        ...whereInvoices,
         createdAt: { gte: startOfMonth }
       },
       _sum: {
@@ -211,7 +243,7 @@ export async function getFinanceStatsAction() {
 
   const prevMonthStats = await prisma.invoices.aggregate({
     where: {
-      patients: { clinicId },
+      ...whereInvoices,
       createdAt: {
         gte: prevMonthStart,
         lt: startOfMonth
@@ -248,7 +280,7 @@ export async function createInvoiceFromCaseAction(payload: {
   procedure: string;
   notes?: string;
 }) {
-  const clinicId = await getClinicId();
+  const { clinicId, branchId } = await getAuthContext();
   if (!clinicId) throw new Error("Clinic not configured");
 
   // Check rate limit (20 creates per minute)
@@ -267,6 +299,8 @@ export async function createInvoiceFromCaseAction(payload: {
     const invoice = await prisma.invoices.create({
       data: {
         id: crypto.randomUUID(),
+        clinicId,
+        branchId: branchId || null,
         patientId: payload.patientId,
         invoiceNumber: `INV-${Date.now()}`,
         totalAmount: payload.amount,
@@ -276,7 +310,7 @@ export async function createInvoiceFromCaseAction(payload: {
         dueDate: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      } as any,
+      },
     });
 
     // Create invoice items separately
@@ -310,7 +344,7 @@ export async function createInvoiceFromCaseAction(payload: {
 }
 
 export async function getMonthlyRevenueDataAction() {
-  const clinicId = await getClinicId();
+  const { clinicId, branchId, role } = await getAuthContext();
   if (!clinicId) return [];
 
   const now = new Date();
@@ -326,17 +360,19 @@ export async function getMonthlyRevenueDataAction() {
     });
   }
 
+  const where: any = { clinicId, status: { not: 'CANCELLED' } };
+  if (role !== "ADMIN" && branchId) {
+    where.branchId = branchId;
+  }
+
   const revenueData = await Promise.all(
     months.map(async (month) => {
       const result = await prisma.invoices.aggregate({
         where: {
-          patients: { clinicId },
+          ...where,
           createdAt: {
             gte: month.start,
             lt: month.end
-          },
-          status: {
-            not: 'CANCELLED'
           }
         },
         _sum: {
@@ -359,14 +395,19 @@ export async function getMonthlyRevenueDataAction() {
 }
 
 export async function getTopProceduresAction() {
-  const clinicId = await getClinicId();
+  const { clinicId, branchId, role } = await getAuthContext();
   if (!clinicId) return [];
+
+  const invoiceWhere: any = { clinicId };
+  if (role !== "ADMIN" && branchId) {
+    invoiceWhere.branchId = branchId;
+  }
 
   // Get all invoice items with their treatments
   const invoiceItems = await prisma.invoice_items.findMany({
     where: {
       invoices: {
-        patients: { clinicId }
+        ...invoiceWhere
       },
       treatmentId: {
         not: null
@@ -415,10 +456,6 @@ export async function getTopProceduresAction() {
   return topProcedures;
 }
 
-// ---------------------------------------------------------------------------
-// getTodayPaymentsAction — Returns all payments made today
-// Used by DailyRevenue component to show real daily revenue
-// ---------------------------------------------------------------------------
 export async function getTodayPaymentsAction(): Promise<{
   id: string;
   patientId: string;
@@ -428,7 +465,7 @@ export async function getTodayPaymentsAction(): Promise<{
   notes: string | null;
   createdAt: string;
 }[]> {
-  const clinicId = await getClinicId();
+  const { clinicId, branchId, role } = await getAuthContext();
   if (!clinicId) return [];
 
   // Use local timezone consistently
@@ -436,11 +473,15 @@ export async function getTodayPaymentsAction(): Promise<{
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
   const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
+  const where: any = { clinicId, type: "PAYMENT" };
+  if (role !== "ADMIN" && branchId) {
+    where.branchId = branchId;
+  }
+
   const payments = await prisma.payments.findMany({
     where: {
-      patients: { clinicId },
-      createdAt: { gte: startOfDay, lte: endOfDay },
-      type: "PAYMENT"
+      ...where,
+      createdAt: { gte: startOfDay, lte: endOfDay }
     },
     include: {
       patients: { select: { fullName: true } }
@@ -460,7 +501,7 @@ export async function getTodayPaymentsAction(): Promise<{
 }
 
 export async function getWeeklyRevenueDataAction() {
-  const clinicId = await getClinicId();
+  const { clinicId, branchId, role } = await getAuthContext();
   if (!clinicId) {
     return {
       days: [],
@@ -491,16 +532,20 @@ export async function getWeeklyRevenueDataAction() {
     });
   }
 
+  const where: any = { clinicId, type: 'PAYMENT' };
+  if (role !== "ADMIN" && branchId) {
+    where.branchId = branchId;
+  }
+
   const revenueData = await Promise.all(
     days.map(async (day) => {
       const result = await prisma.payments.aggregate({
         where: {
-          patients: { clinicId },
+          ...where,
           createdAt: {
             gte: day.start,
             lt: day.end
-          },
-          type: 'PAYMENT'
+          }
         },
         _sum: {
           amount: true
@@ -527,12 +572,11 @@ export async function getWeeklyRevenueDataAction() {
 
   const prevWeekStats = await prisma.payments.aggregate({
     where: {
-      patients: { clinicId },
+      ...where,
       createdAt: {
         gte: prevWeekStart,
         lt: prevWeekEnd
-      },
-      type: 'PAYMENT'
+      }
     },
     _sum: {
       amount: true
@@ -552,16 +596,12 @@ export async function getWeeklyRevenueDataAction() {
   };
 }
 
-// ---------------------------------------------------------------------------
-// quickCashPaymentAction — Fast inline payment from InvoiceHistoryTable
-// Returns updated invoice + payment for optimistic UI updates
-// ---------------------------------------------------------------------------
 export async function quickCashPaymentAction(payload: {
   invoiceId: string;
   amount: number;
   notes?: string;
 }): Promise<{ success: boolean; payment: any; invoice: any }> {
-  const clinicId = await getClinicId();
+  const { clinicId, branchId, role } = await getAuthContext();
   if (!clinicId) throw new Error("Clinic not configured");
 
   // Server-side validation
@@ -575,12 +615,14 @@ export async function quickCashPaymentAction(payload: {
     throw new Error("Invalid payment data");
   }
 
-  // 1. Verify invoice belongs to clinic
+  // 1. Verify invoice belongs to clinic and branch
+  const invoiceWhere: any = { id: payload.invoiceId, clinicId };
+  if (role !== "ADMIN" && branchId) {
+    invoiceWhere.branchId = branchId;
+  }
+
   const invoice = await prisma.invoices.findFirst({
-    where: {
-      id: payload.invoiceId,
-      patients: { clinicId }
-    },
+    where: invoiceWhere,
     include: {
       patients: { select: { fullName: true } }
     }
@@ -598,6 +640,8 @@ export async function quickCashPaymentAction(payload: {
     const payment = await tx.payments.create({
       data: {
         id: crypto.randomUUID(),
+        clinicId,
+        branchId: invoice.branchId,
         patientId: invoice.patientId,
         amount: payload.amount,
         method: PaymentMethod.CASH,
@@ -625,7 +669,6 @@ export async function quickCashPaymentAction(payload: {
       data: { status: newStatus }
     });
 
-    // Convert Decimals to plain numbers for Client Component serialization
     return {
       payment: {
         id: payment.id,

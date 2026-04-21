@@ -23,7 +23,8 @@ export type EntityType =
   | "clinical_case"
   | "treatment"
   | "user"
-  | "service";
+  | "service"
+  | "clinic_settings";
 
 // ---------------------------------------------------------------------------
 // Convenience functions

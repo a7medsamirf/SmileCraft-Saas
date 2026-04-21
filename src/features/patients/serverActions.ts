@@ -5,6 +5,7 @@
 // ✅ Migrated to Prisma ORM with branch isolation
 // ✅ Auto-assign mechanism for orphaned records
 // ✅ Graceful error handling
+// ✅ Admin cross-branch access
 // =============================================================================
 
 import { revalidatePath } from "next/cache";
@@ -27,27 +28,32 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { auditCreate, auditUpdate, auditDelete } from "@/lib/audit";
 
 // ---------------------------------------------------------------------------
-// Auth helper — returns clinicId and branchId or null (never throws)
+// Auth helper — returns clinicId, branchId and role (never throws)
 // ---------------------------------------------------------------------------
-async function getClinicAndBranchId(): Promise<{ clinicId: string | null; branchId: string | null }> {
+async function getAuthContext(): Promise<{ 
+  clinicId: string | null; 
+  branchId: string | null; 
+  role: string | null;
+}> {
   try {
     const supabase = await createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) return { clinicId: null, branchId: null };
+    if (!user) return { clinicId: null, branchId: null, role: null };
 
     const dbUser = await prisma.users.findUnique({
       where: { id: user.id },
-      select: { clinicId: true, branchId: true },
+      select: { clinicId: true, branchId: true, role: true },
     });
 
     return {
       clinicId: dbUser?.clinicId ?? null,
       branchId: dbUser?.branchId ?? null,
+      role: dbUser?.role ?? null,
     };
   } catch {
-    return { clinicId: null, branchId: null };
+    return { clinicId: null, branchId: null, role: null };
   }
 }
 
@@ -168,7 +174,7 @@ export async function getPatientsAction(
   limit: number = 10,
 ): Promise<PaginatedPatients> {
   try {
-    const { clinicId, branchId } = await getClinicAndBranchId();
+    const { clinicId, branchId, role } = await getAuthContext();
 
     // No clinic yet → return empty list
     if (!clinicId) {
@@ -186,8 +192,8 @@ export async function getPatientsAction(
       deletedAt: null,
     };
 
-    // Filter by branch if user has a branch selected
-    if (branchId) {
+    // Filter by branch if user has a branch selected AND is not ADMIN
+    if (role !== "ADMIN" && branchId) {
       where.branchId = branchId;
     }
 
@@ -238,7 +244,7 @@ export async function getPatientsAction(
 // ---------------------------------------------------------------------------
 export async function getPatientByIdAction(id: string): Promise<Patient | null> {
   try {
-    const { clinicId, branchId } = await getClinicAndBranchId();
+    const { clinicId } = await getAuthContext();
 
     if (!clinicId) return null;
 
@@ -248,14 +254,7 @@ export async function getPatientByIdAction(id: string): Promise<Patient | null> 
       deletedAt: null,
     };
 
-    // Don't filter by branchId for direct patient lookup
-    // Patients should be accessible across branches within the same clinic
-    // if (branchId) {
-    //   where.branchId = branchId;
-    // }
-
-    console.log("[getPatientByIdAction] Searching for patient with where clause:", where);
-
+    // Patients accessible across branches for all roles within the same clinic
     const patient = await prisma.patients.findFirst({
       where,
       include: { medical_histories: true },
@@ -279,7 +278,7 @@ export async function getPatientByIdAction(id: string): Promise<Patient | null> 
 export async function createPatientActionDB(
   payload: Omit<Patient, "id" | "createdAt" | "updatedAt">,
 ): Promise<Patient> {
-  const { clinicId, branchId } = await getClinicAndBranchId();
+  const { clinicId, branchId } = await getAuthContext();
   if (!clinicId) throw new Error("Unauthorized: no clinic found for this user.");
 
   // Check rate limit (20 creates per minute)
@@ -352,7 +351,7 @@ export async function updatePatientActionDB(
   id: string,
   payload: Partial<Patient>,
 ): Promise<Patient> {
-  const { clinicId, branchId } = await getClinicAndBranchId();
+  const { clinicId, branchId, role } = await getAuthContext();
   if (!clinicId) throw new Error("Unauthorized");
 
   // Check rate limit (50 updates per minute)
@@ -367,8 +366,8 @@ export async function updatePatientActionDB(
     clinicId,
   };
 
-  // Also verify branch if user has one selected
-  if (branchId) {
+  // Also verify branch if user has one selected AND is not ADMIN
+  if (role !== "ADMIN" && branchId) {
     where.branchId = branchId;
   }
 
@@ -444,7 +443,7 @@ export async function updatePatientActionDB(
 // deletePatientAction
 // ---------------------------------------------------------------------------
 export async function deletePatientAction(id: string): Promise<void> {
-  const { clinicId, branchId } = await getClinicAndBranchId();
+  const { clinicId, branchId, role } = await getAuthContext();
   if (!clinicId) throw new Error("Unauthorized");
 
   // Check rate limit (10 deletes per minute)
@@ -459,8 +458,8 @@ export async function deletePatientAction(id: string): Promise<void> {
     clinicId,
   };
 
-  // Also verify branch if user has one selected
-  if (branchId) {
+  // Also verify branch if user has one selected AND is not ADMIN
+  if (role !== "ADMIN" && branchId) {
     where.branchId = branchId;
   }
 

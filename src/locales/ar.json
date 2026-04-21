@@ -146,6 +146,7 @@
     "inventory": "المخزون",
     "finance": "المالية والفواتير",
     "branches": "الفروع",
+    "schedule": "مواعيد العمل",
     "settings": "الإعدادات",
     "appName": "SmileCraft CMS",
     "shortAppName": "SmileCraft",
@@ -767,6 +768,18 @@
       "editRecords": "تعديل السجلات الطبية",
       "viewRevenue": "عرض الأرباح",
       "deleteData": "حذف البيانات",
+      "view_dashboard": "عرض الرئيسية",
+      "view_patients": "عرض المرضى",
+      "view_clinical": "عرض التشخيص الطبي",
+      "view_assistant": "عرض المساعد الذكي",
+      "view_calendar": "عرض التقويم",
+      "view_appointments": "عرض المواعيد",
+      "view_staff": "عرض الموظفين",
+      "view_inventory": "عرض المخزون",
+      "view_finance": "عرض المالية",
+      "view_branches": "عرض الفروع",
+      "view_settings": "عرض الإعدادات",
+      "view_schedule": "عرض مواعيد العمل",
       "staffGuard": "يتم حفظ الصلاحيات لكل موظف بشكل منفصل",
       "selectStaff": "اختر الموظف",
       "permission": "الصلاحية",
@@ -994,6 +1007,7 @@
     "searchPlaceholder": "بحث بالاسم أو الكود...",
     "noResultsFound": "لم يتم العثور على نتائج",
     "selectBranch": "اختر فرعاً",
-    "selectBranchPrompt": "يرجى اختيار فرع للمتابعة"
+    "selectBranchPrompt": "يرجى اختيار فرع للمتابعة",
+    "allBranches": "جميع الفروع"
   }
 }

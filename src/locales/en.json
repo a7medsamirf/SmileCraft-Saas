@@ -763,6 +763,18 @@
       "editRecords": "Edit Medical Records",
       "viewRevenue": "View Revenue",
       "deleteData": "Delete Data",
+      "view_dashboard": "View Dashboard",
+      "view_patients": "View Patients",
+      "view_clinical": "View Clinical",
+      "view_assistant": "View Smart Assistant",
+      "view_calendar": "View Calendar",
+      "view_appointments": "View Appointments",
+      "view_staff": "View Staff",
+      "view_inventory": "View Inventory",
+      "view_finance": "View Finance",
+      "view_branches": "View Branches",
+      "view_settings": "View Settings",
+      "view_schedule": "View Working Hours",
       "staffGuard": "Permissions are saved individually for each staff member",
       "selectStaff": "Select Staff Member",
       "permission": "Permission",
@@ -990,6 +1002,7 @@
     "searchPlaceholder": "Search by name or code...",
     "noResultsFound": "No results found",
     "selectBranch": "Select Branch",
-    "selectBranchPrompt": "Please select a branch to continue"
+    "selectBranchPrompt": "Please select a branch to continue",
+    "allBranches": "All Branches"
   }
 }

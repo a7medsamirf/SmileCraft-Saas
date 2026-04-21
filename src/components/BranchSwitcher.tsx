@@ -23,9 +23,10 @@ type BranchSwitcherProps = {
   currentBranchId: string | null;
   onSwitch: (branchId: string) => Promise<void>;
   onCreateBranch: (name: string) => Promise<void>;
+  isAdmin?: boolean;
 };
 
-export function BranchSwitcher({ branches, currentBranchId, onSwitch, onCreateBranch }: BranchSwitcherProps) {
+export function BranchSwitcher({ branches, currentBranchId, onSwitch, onCreateBranch, isAdmin }: BranchSwitcherProps) {
   const t = useTranslations("Branches");
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -35,6 +36,7 @@ export function BranchSwitcher({ branches, currentBranchId, onSwitch, onCreateBr
   const [isCreating, setIsCreating] = useState(false);
 
   const currentBranch = branches.find((b) => b.id === currentBranchId);
+  const isAllBranches = isAdmin && currentBranchId === null;
 
   const handleSwitch = (branchId: string) => {
     setError(null);
@@ -49,13 +51,13 @@ export function BranchSwitcher({ branches, currentBranchId, onSwitch, onCreateBr
     });
   };
 
-  // If no branches exist, don't show anything
-  if (branches.length === 0) {
+  // If no branches exist and not admin, don't show anything
+  if (branches.length === 0 && !isAdmin) {
     return null;
   }
 
-  // If currentBranchId is null but branches exist, show a "select branch" prompt
-  if (!currentBranchId) {
+  // If currentBranchId is null but branches exist (and NOT all branches for admin), show a "select branch" prompt
+  if (currentBranchId === null && branches.length > 0 && !isAllBranches) {
     return (
       <div className="relative">
         <button
@@ -91,6 +93,29 @@ export function BranchSwitcher({ branches, currentBranchId, onSwitch, onCreateBr
                   {t("selectBranchPrompt")}
                 </p>
                 <div className="border-t border-white/10 mt-1 pt-1">
+                  {/* All Branches Option for Admin */}
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => handleSwitch("all")}
+                      disabled={isPending}
+                      className={cn(
+                        "w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm",
+                        "hover:bg-white/5 transition-colors",
+                        "disabled:opacity-50",
+                        isAllBranches && "bg-blue-500/10"
+                      )}
+                    >
+                      <GitBranch className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                      <span className="flex-1 text-right text-amber-300 font-bold truncate">
+                        {t("allBranches")}
+                      </span>
+                      {isAllBranches && (
+                        <Check className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                      )}
+                    </button>
+                  )}
+
                   {branches
                     .filter((b) => b.isActive)
                     .map((branch) => (
@@ -145,20 +170,20 @@ export function BranchSwitcher({ branches, currentBranchId, onSwitch, onCreateBr
       {/* Trigger */}
       <button
         type="button"
-        onClick={() => branches.length > 1 && setOpen(!open)}
+        onClick={() => (branches.length > 1 || isAdmin) && setOpen(!open)}
         disabled={isPending}
         className={cn(
           "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm",
           "bg-white/5 hover:bg-white/10 border border-white/10",
           "transition-all duration-200 disabled:opacity-50",
-          branches.length <= 1 && "cursor-default"
+          (branches.length <= 1 && !isAdmin) && "cursor-default"
         )}
       >
         <GitBranch className="w-4 h-4 text-slate-400 shrink-0" />
         <span className="flex-1 text-right text-slate-300 truncate">
-          {currentBranch?.name || t("name")}
+          {isAllBranches ? t("allBranches") : (currentBranch?.name || t("name"))}
         </span>
-        {branches.length > 1 && (
+        {(branches.length > 1 || isAdmin) && (
           isPending ? (
             <Loader2 className="w-3.5 h-3.5 text-slate-500 animate-spin" />
           ) : (
@@ -168,7 +193,7 @@ export function BranchSwitcher({ branches, currentBranchId, onSwitch, onCreateBr
       </button>
 
       {/* Dropdown */}
-      {open && branches.length > 1 && (
+      {open && (branches.length > 1 || isAdmin) && (
         <>
           {/* Backdrop */}
           <div className="fixed inset-0 z-40" onClick={() => { setOpen(false); setShowCreateForm(false); }} />
@@ -224,6 +249,29 @@ export function BranchSwitcher({ branches, currentBranchId, onSwitch, onCreateBr
               </div>
             ) : (
               <div className="p-1">
+                {/* All Branches Option for Admin */}
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => handleSwitch("all")}
+                    disabled={isPending}
+                    className={cn(
+                      "w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm",
+                      "hover:bg-white/5 transition-colors",
+                      "disabled:opacity-50",
+                      isAllBranches && "bg-blue-500/10"
+                    )}
+                  >
+                    <GitBranch className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    <span className="flex-1 text-right text-amber-300 font-bold truncate">
+                      {t("allBranches")}
+                    </span>
+                    {isAllBranches && (
+                      <Check className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                    )}
+                  </button>
+                )}
+
                 {branches
                   .filter((b) => b.isActive)
                   .map((branch) => (

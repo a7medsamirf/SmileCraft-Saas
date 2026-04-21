@@ -23,8 +23,16 @@ interface ExportState {
   fileName?: string;
 }
 
-function downloadFile(content: string, fileName: string) {
-  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+function downloadFile(dataUrl: string, fileName: string) {
+  const [header, base64Data] = dataUrl.split(",");
+  const mimeType = header.match(/:([^;]+);/)?.[1] || "text/plain";
+  const byteCharacters = atob(base64Data);
+  const byteNumbers = new Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  }
+  const byteArray = new Uint8Array(byteNumbers);
+  const blob = new Blob([byteArray], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

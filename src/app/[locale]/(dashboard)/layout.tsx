@@ -1,5 +1,11 @@
 import { Sidebar } from "@/components/shared/Sidebar";
-import { resolveUserFullName, resolveUserRole, resolveUserStaffInfo, resolveBranchId } from "@/lib/supabase-utils";
+import { 
+  resolveUserFullName, 
+  resolveUserRole, 
+  resolveUserStaffInfo, 
+  resolveBranchId,
+  resolveUserPermissions 
+} from "@/lib/supabase-utils";
 import { getClinicInfoAction } from "@/features/settings/serverActions";
 import { DashboardBackground } from "@/components/shared/DashboardBackground";
 
@@ -10,12 +16,13 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [userName, userRole, userStaffInfo, clinicInfo, currentBranchId] = await Promise.all([
+  const [userName, userRole, userStaffInfo, clinicInfo, currentBranchId, userPermissions] = await Promise.all([
     resolveUserFullName(),
     resolveUserRole(), // ✅ Get actual UserRole from users table
     resolveUserStaffInfo(),
     getClinicInfoAction(),
     resolveBranchId(),
+    resolveUserPermissions(),
   ]);
 
   return (
@@ -23,6 +30,7 @@ export default async function DashboardLayout({
       <Sidebar
         userName={userName}
         userRole={userRole} // ✅ Pass actual UserRole (ADMIN, DOCTOR, RECEPTIONIST, ASSISTANT)
+        userPermissions={userPermissions}
         userSpecialty={userStaffInfo?.specialty}
         clinicName={clinicInfo?.name}
         clinicLogo={clinicInfo?.logoUrl}

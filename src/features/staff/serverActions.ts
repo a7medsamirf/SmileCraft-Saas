@@ -18,28 +18,33 @@ import { auditCreate, auditUpdate, auditDelete } from "@/lib/audit";
 // ─── Auth helpers ─────────────────────────────────────────────────────────────
 
 /**
- * Helper to get the current user's clinic ID and branch ID.
+ * Helper to get the current user's clinic ID, branch ID and role.
  */
-async function getClinicAndBranchId(): Promise<{ clinicId: string | null; branchId: string | null }> {
+async function getAuthContext(): Promise<{ 
+  clinicId: string | null; 
+  branchId: string | null;
+  role: string | null;
+}> {
   try {
     const supabase = await createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user) return { clinicId: null, branchId: null };
+    if (!user) return { clinicId: null, branchId: null, role: null };
 
     const dbUser = await prisma.users.findUnique({
       where: { id: user.id },
-      select: { clinicId: true, branchId: true },
+      select: { clinicId: true, branchId: true, role: true },
     });
 
     return {
       clinicId: dbUser?.clinicId ?? null,
       branchId: dbUser?.branchId ?? null,
+      role: dbUser?.role ?? null,
     };
   } catch {
-    return { clinicId: null, branchId: null };
+    return { clinicId: null, branchId: null, role: null };
   }
 }
 
@@ -51,6 +56,7 @@ function mapStaffRow(row: any): StaffMember {
     fullName: row.fullName ?? "",
     role: row.role ?? "ASSISTANT",
     specialty: row.specialty ?? undefined,
+    branchId: row.branchId ?? undefined,
     certifications:
       typeof row.certification === "string" && row.certification
         ? row.certification
@@ -104,13 +110,20 @@ function mapPayrollRow(row: any): PayrollRecord {
 
 export async function getStaffMembersAction(): Promise<StaffMember[]> {
   try {
-    const { clinicId } = await getClinicAndBranchId();
+    const { clinicId, branchId, role } = await getAuthContext();
     
     // Not authenticated or no clinic → return empty array
     if (!clinicId) return [];
 
+    const where: any = { clinicId, isActive: true };
+    
+    // If not ADMIN, filter by branchId
+    if (role !== "ADMIN" && branchId) {
+      where.branchId = branchId;
+    }
+
     const staff = await prisma.staff.findMany({
-      where: { clinicId, isActive: true },
+      where,
       orderBy: { fullName: "asc" },
     });
 
@@ -127,7 +140,7 @@ export async function createStaffMemberAction(
   payload: Omit<StaffMember, "id">,
 ): Promise<StaffMember> {
   try {
-    const { clinicId, branchId } = await getClinicAndBranchId();
+    const { clinicId, branchId } = await getAuthContext();
     if (!clinicId) throw new Error("Unauthorized");
 
     // Check rate limit (20 creates per minute)
@@ -180,11 +193,12 @@ export async function createStaffMemberAction(
       });
     }
 
-    // Create staff record — bound to admin's branchId
+    // Create staff record — bound to the current branchId
     const staff = await prisma.staff.create({
       data: {
         id: newId,
         clinicId,
+        branchId: branchId ?? null,
         fullName: payload.fullName,
         email: payload.email,
         phone: payload.phone,
@@ -215,8 +229,10 @@ export async function createStaffMemberAction(
     // Log error with details for debugging
     console.error("[createStaffMemberAction] Error:", err);
     
-    // Return specific error message for known errors, generic for unknown
-    const message = err instanceof Error ? err.message : "فشل في إنشاء الموظف";
+    let message = "فشل في إنشاء الموظف";
+    if (err instanceof Error) {
+      message = err.message;
+    }
     throw new Error(message);
   }
 }
@@ -226,13 +242,18 @@ export async function updateStaffMemberAction(
   payload: Partial<StaffMember>,
 ): Promise<StaffMember> {
   try {
-    const { clinicId } = await getClinicAndBranchId();
+    const { clinicId, branchId, role } = await getAuthContext();
     if (!clinicId) throw new Error("Unauthorized");
 
     // Check rate limit (50 updates per minute)
     const rateLimit = await checkRateLimit("updateStaff", RATE_LIMITS.MUTATION_UPDATE);
     if (!rateLimit.success) {
       throw new Error("Rate limit exceeded. Please try again later.");
+    }
+
+    const where: any = { id, clinicId };
+    if (role !== "ADMIN" && branchId) {
+      where.branchId = branchId;
     }
 
     const patch: Record<string, unknown> = {};
@@ -247,7 +268,7 @@ export async function updateStaffMemberAction(
     if (payload.role !== undefined) patch.role = payload.role;
 
     const staff = await prisma.staff.update({
-      where: { id, clinicId },
+      where,
       data: patch,
     });
 
@@ -261,14 +282,17 @@ export async function updateStaffMemberAction(
     return mapStaffRow(staff);
   } catch (err) {
     console.error("[updateStaffMemberAction] Error:", err);
-    const message = err instanceof Error ? err.message : "فشل في تحديث الموظف";
+    let message = "فشل في تحديث الموظف";
+    if (err instanceof Error) {
+      message = err.message;
+    }
     throw new Error(message);
   }
 }
 
 export async function deleteStaffMemberAction(id: string): Promise<void> {
   try {
-    const { clinicId } = await getClinicAndBranchId();
+    const { clinicId, branchId, role } = await getAuthContext();
     if (!clinicId) throw new Error("Unauthorized");
 
     // Check rate limit (10 deletes per minute)
@@ -277,8 +301,13 @@ export async function deleteStaffMemberAction(id: string): Promise<void> {
       throw new Error("Rate limit exceeded. Please try again later.");
     }
 
+    const where: any = { id, clinicId };
+    if (role !== "ADMIN" && branchId) {
+      where.branchId = branchId;
+    }
+
     await prisma.staff.delete({
-      where: { id, clinicId },
+      where,
     });
 
     // Audit log
@@ -287,7 +316,10 @@ export async function deleteStaffMemberAction(id: string): Promise<void> {
     revalidatePath("/dashboard/staff");
   } catch (err) {
     console.error("[deleteStaffMemberAction] Error:", err);
-    const message = err instanceof Error ? err.message : "فشل في حذف الموظف";
+    let message = "فشل في حذف الموظف";
+    if (err instanceof Error) {
+      message = err.message;
+    }
     throw new Error(message);
   }
 }
@@ -299,12 +331,17 @@ export async function deleteStaffMemberAction(id: string): Promise<void> {
 /** Load all leave requests for the clinic, optionally filtered by staffId. */
 export async function getLeaveRequestsAction(staffId?: string): Promise<LeaveRequest[]> {
   try {
-    const { clinicId } = await getClinicAndBranchId();
+    const { clinicId, branchId, role } = await getAuthContext();
     if (!clinicId) return [];
 
     const where: any = { clinicId };
     if (staffId) {
       where.staffId = staffId;
+    }
+
+    // Filter by branch for non-admins
+    if (role !== "ADMIN" && branchId) {
+      where.staff = { branchId };
     }
 
     const leaveRequests = await prisma.leave_requests.findMany({
@@ -330,7 +367,7 @@ export async function createLeaveRequestAction(
   };
 
   try {
-    const { clinicId } = await getClinicAndBranchId();
+    const { clinicId } = await getAuthContext();
     if (!clinicId) return optimistic;
 
     const leaveRequest = await prisma.leave_requests.create({
@@ -361,11 +398,16 @@ export async function updateLeaveStatusAction(
   reviewedBy?: string,
 ): Promise<void> {
   try {
-    const { clinicId } = await getClinicAndBranchId();
+    const { clinicId, branchId, role } = await getAuthContext();
     if (!clinicId) return;
 
+    const where: any = { id: leaveId, clinicId };
+    if (role !== "ADMIN" && branchId) {
+      where.staff = { branchId };
+    }
+
     await prisma.leave_requests.update({
-      where: { id: leaveId, clinicId },
+      where,
       data: {
         status,
         reviewedAt: new Date(),
@@ -386,11 +428,16 @@ export async function updateLeaveStatusAction(
 /** Load all payroll records for a specific month. */
 export async function getPayrollByMonthAction(month: string): Promise<PayrollRecord[]> {
   try {
-    const { clinicId } = await getClinicAndBranchId();
+    const { clinicId, branchId, role } = await getAuthContext();
     if (!clinicId) return [];
 
+    const where: any = { clinicId, month };
+    if (role !== "ADMIN" && branchId) {
+      where.staff = { branchId };
+    }
+
     const payrollRecords = await prisma.payroll_records.findMany({
-      where: { clinicId, month },
+      where,
       orderBy: { createdAt: "asc" },
     });
 
@@ -406,7 +453,7 @@ export async function getPayrollByMonthAction(month: string): Promise<PayrollRec
  */
 export async function savePayrollRecordAction(record: PayrollRecord): Promise<PayrollRecord> {
   try {
-    const { clinicId } = await getClinicAndBranchId();
+    const { clinicId } = await getAuthContext();
     if (!clinicId) return record;
 
     const payrollRecord = await prisma.payroll_records.upsert({
@@ -455,7 +502,7 @@ export async function generateMonthlyPayrollAction(
   staffList: StaffMember[],
 ): Promise<PayrollRecord[]> {
   try {
-    const { clinicId } = await getClinicAndBranchId();
+    const { clinicId } = await getAuthContext();
     if (!clinicId) return [];
 
     // Find which staff already have a record this month
